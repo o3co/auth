@@ -45,3 +45,20 @@ services:
       interval: 3s
       timeout: 5s
       retries: 10
+
+  policy-verifier:
+    build:
+      context: ../repos/auth.policy-verifier
+      target: runtime
+    ports:
+      - "3097:3000"
+    environment:
+      - OAUTH_JWT_SECRET=test-secret-for-e2e
+    depends_on:
+      provider:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/healthcheck"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
