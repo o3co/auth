@@ -1,0 +1,47 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6399:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+  provider:
+    build:
+      context: ../repos/auth.provider
+      target: runtime
+    ports:
+      - "3099:3000"
+    environment:
+      - OAUTH_JWT_SECRET=test-secret-for-e2e
+      - SESSION_SECRET=test-session-secret
+      - SESSION_STORAGE_REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/healthcheck"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  proxy:
+    build:
+      context: ../repos/auth.proxy
+      target: runtime
+    ports:
+      - "3098:80"
+    environment:
+      - INTROSPECT_URL=http://provider:3000/oauth/introspect
+      - ENDPOINT_BASEURL=http://provider:3000
+    depends_on:
+      provider:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/healthcheck"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
