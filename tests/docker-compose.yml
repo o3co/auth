@@ -19,11 +19,14 @@ services:
       - OAUTH_JWT_SECRET=test-secret-for-e2e
       - SESSION_SECRET=test-session-secret
       - SESSION_STORAGE_REDIS_URL=redis://redis:6379
+      - CLIENT_USER_BASE_URL=http://127.0.0.1:3000
+      - CLIENT_APP_BASE_URL=http://127.0.0.1:3000
+      - CLIENT_CODE_ENDPOINT_URI=redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/healthcheck"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_healthcheck"]
       interval: 3s
       timeout: 5s
       retries: 10
@@ -41,7 +44,7 @@ services:
       provider:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/healthcheck"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/_healthcheck"]
       interval: 3s
       timeout: 5s
       retries: 10
@@ -58,7 +61,7 @@ services:
       provider:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/healthcheck"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/healthcheck"]
       interval: 3s
       timeout: 5s
       retries: 10

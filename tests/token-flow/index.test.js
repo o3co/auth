@@ -32,27 +32,30 @@ describe('Token Flow: provider -> proxy', () => {
       { expiresIn: 60 }
     );
 
-    // 2. Verify provider introspects it as active
-    const introspectRes = await provider.post('/oauth/introspect', { token });
+    // 2. Verify provider introspects it as active (self-introspect via Bearer)
+    const introspectRes = await provider.post('/oauth/introspect', { token }, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     expect(introspectRes.status).toBe(200);
     expect(introspectRes.data.active).toBe(true);
 
     // 3. Use the token to access proxy — should forward to downstream
-    const proxyRes = await proxy.get('/healthcheck', {
+    const proxyRes = await proxy.get('/_healthcheck', {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(proxyRes.status).toBe(200);
   });
 
   it('proxy rejects request with invalid token', async () => {
-    const proxyRes = await proxy.get('/healthcheck', {
+    // Use a proxied route (not /_healthcheck which bypasses auth)
+    const proxyRes = await proxy.get('/oauth', {
       headers: { Authorization: 'Bearer invalid.token.here' },
     });
     expect(proxyRes.status).toBe(401);
   });
 
   it('proxy passes through request without Authorization header', async () => {
-    const proxyRes = await proxy.get('/healthcheck');
+    const proxyRes = await proxy.get('/_healthcheck');
     expect(proxyRes.status).toBe(200);
   });
 
@@ -63,7 +66,8 @@ describe('Token Flow: provider -> proxy', () => {
       { expiresIn: -1 }
     );
 
-    const proxyRes = await proxy.get('/healthcheck', {
+    // Use a proxied route (not /_healthcheck which bypasses auth)
+    const proxyRes = await proxy.get('/oauth', {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(proxyRes.status).toBe(401);
