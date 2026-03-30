@@ -19,10 +19,10 @@ Client
 +-----------------+       +------------------------+
   |  (3) Validated request forwarded
   v
-+-----------------+       +------------------------+
-|  downstream     |       |  auth.verifier         |
-|    service      |------>|  (ABAC policy check)   |
-+-----------------+       +------------------------+
++-----------------+       +--------------------------+
+|  downstream     |       | auth.policy-verifier     |
+|    service      |------>| POST /verify (ABAC)      |
++-----------------+       +--------------------------+
 ```
 
 ## Components
@@ -31,7 +31,7 @@ Client
 | --- | --- | --- | --- |
 | auth.provider | Node.js/TS | [o3co/auth.provider](https://github.com/o3co/auth.provider) | OAuth 2.0 provider: login, token issuance, introspection |
 | auth.proxy | Node.js/TS | [o3co/auth.proxy](https://github.com/o3co/auth.proxy) | Token validation + caching reverse proxy |
-| auth.verifier | Rust (planned) | — | ABAC policy verifier |
+| auth.policy-verifier | Node.js/TS | [o3co/auth.policy-verifier](https://github.com/o3co/auth.policy-verifier) | No-DSL ABAC policy verifier with Collector pattern |
 | grpc.authz | Go | [o3co/grpc.authz](https://github.com/o3co/grpc.authz) | gRPC interceptors for policy enforcement |
 
 ## Auth Flow
@@ -40,8 +40,18 @@ Client
 2. `auth.provider` issues JWT access token (+ optional refresh token)
 3. Client sends requests with `Authorization: Bearer <token>` to `auth.proxy`
 4. `auth.proxy` validates token via introspection (cached) and forwards to downstream
-5. Downstream service optionally calls `auth.verifier` for fine-grained ABAC checks
-6. For gRPC services, `grpc.authz` interceptors handle policy resolution from proto options
+5. Downstream service calls `auth.policy-verifier` (`POST /verify`) for fine-grained ABAC checks
+6. For gRPC services, `grpc.authz` interceptors resolve policy from `.proto` options and call the verifier
+
+## Migration Path
+
+Each component runs as a standalone HTTP service. To migrate to OPA or Cedar:
+
+- **Policy verifier** → Replace `auth.policy-verifier` with OPA or Cedar Agent. `grpc.authz` already supports all three as backends
+- **Auth provider** → Replace with Keycloak, Auth0, or any OAuth 2.0 provider. `auth.proxy` just needs the introspection endpoint URL
+- **Auth proxy** → Replace with any token-validating reverse proxy (e.g., Envoy with ext_authz)
+
+No application code changes required — only endpoint URLs in configuration.
 
 ## Configuration
 
