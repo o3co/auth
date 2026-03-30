@@ -44,6 +44,7 @@ build: setup
 test-e2e: build
 	docker compose -f tests/docker-compose.yml up -d --build --wait
 	cd tests/token-flow && pnpm install && pnpm vitest run
+	cd tests/abac && pnpm install && pnpm vitest run
 	docker compose -f tests/docker-compose.yml down
 
 .PHONY: clean

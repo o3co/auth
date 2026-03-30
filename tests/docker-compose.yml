@@ -55,6 +55,8 @@ services:
       target: runtime
     ports:
       - "3097:3000"
+    volumes:
+      - ./abac/application.conf:/home/node/config/application.conf:ro
     environment:
       - OAUTH_JWT_SECRET=test-secret-for-e2e
     depends_on:
