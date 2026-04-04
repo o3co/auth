@@ -12,6 +12,7 @@ services:
   provider:
     build:
       context: ../repos/auth.provider
+      dockerfile: templates/standalone/Dockerfile
       target: runtime
     ports:
       - "3099:3000"
