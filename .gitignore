@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+*.log
+.env
+.env.*
+
+# Cloned repositories (managed via `make setup`, not submodules)
+repos/*/
