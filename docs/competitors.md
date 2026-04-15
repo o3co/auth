@@ -82,7 +82,7 @@ The "no DSL" approach is the primary differentiator vs OPA (Rego), Cedar (Cedar 
 
 ---
 
-## grpc.authz
+## protobuf.interceptors
 
 gRPC authorization middleware space.
 
@@ -102,6 +102,6 @@ gRPC authorization middleware space.
 | [Connect authn-go](https://github.com/connectrpc/authn-go) | Go | Apache 2.0 | ~89 | HTTP middleware for Connect RPC. AuthFunc pattern. Per-method via `Spec.Procedure`. Can read proto custom options in interceptors (DIY pattern). HTTP-first design. |
 | [Casbin](https://github.com/casbin/casbin) (gRPC) | Go (multi-lang) | Apache 2.0 | ~20k | casbin-server as gRPC authz service, or envoy-authz as ext_authz backend. No dedicated gRPC interceptor. PERM model maps to `Enforce(sub, obj, act)`. |
 
-### grpc.authz's position
+### protobuf.interceptors's position
 
-No existing project declares authorization policy directly in `.proto` method options. This is grpc.authz's unique approach. The Big 3 are infrastructure-level (require Envoy/Istio/OPA sidecar). go-grpc-middleware provides only a hook point — policy logic is your responsibility. Casbin has model-driven policies but no gRPC interceptor. grpc.authz fills the gap: declarative per-method policy in `.proto` + pluggable verification backend, all at the library level.
+No existing project declares authorization policy directly in `.proto` method options. This is protobuf.interceptors's unique approach. The Big 3 are infrastructure-level (require Envoy/Istio/OPA sidecar). go-grpc-middleware provides only a hook point — policy logic is your responsibility. Casbin has model-driven policies but no gRPC interceptor. protobuf.interceptors fills the gap: declarative per-method policy in `.proto` + pluggable verification backend, all at the library level.

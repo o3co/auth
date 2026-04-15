@@ -82,7 +82,7 @@ auth.proxy は狭いニッチ: イントロスペクションベースのトー�
 
 ---
 
-## grpc.authz
+## protobuf.interceptors
 
 gRPC 認可ミドルウェア領域。
 
@@ -102,6 +102,6 @@ gRPC 認可ミドルウェア領域。
 | [Connect authn-go](https://github.com/connectrpc/authn-go) | Go | Apache 2.0 | ~89 | Connect RPC 用の HTTP ミドルウェア。AuthFunc パターン。メソッド単位は `Spec.Procedure` で対応。インターセプターで proto カスタムオプションの読み取り可能（DIY パターン）。HTTP ファーストの設計。 |
 | [Casbin](https://github.com/casbin/casbin) (gRPC) | Go (多言語) | Apache 2.0 | ~20k | casbin-server を gRPC 認可サービスとして、または envoy-authz を ext_authz バックエンドとして使用。専用 gRPC インターセプターなし。PERM モデルを `Enforce(sub, obj, act)` にマッピング。 |
 
-### grpc.authz のポジション
+### protobuf.interceptors のポジション
 
-`.proto` メソッドオプションに認可ポリシーを直接宣言するプロジェクトは他に存在しない。これが grpc.authz の独自アプローチ。Big 3 はインフラレベル（Envoy/Istio/OPA サイドカーが必要）。go-grpc-middleware はフックポイントのみ — ポリシーロジックは自前。Casbin はモデル駆動ポリシーだが gRPC インターセプターなし。grpc.authz は `.proto` での宣言的メソッド単位ポリシー + プラグ可能な検証バックエンドをライブラリレベルで提供するギャップを埋めている。
+`.proto` メソッドオプションに認可ポリシーを直接宣言するプロジェクトは他に存在しない。これが protobuf.interceptors の独自アプローチ。Big 3 はインフラレベル（Envoy/Istio/OPA サイドカーが必要）。go-grpc-middleware はフックポイントのみ — ポリシーロジックは自前。Casbin はモデル駆動ポリシーだが gRPC インターセプターなし。protobuf.interceptors は `.proto` での宣言的メソッド単位ポリシー + プラグ可能な検証バックエンドをライブラリレベルで提供するギャップを埋めている。
