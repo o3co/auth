@@ -1,5 +1,7 @@
 # auth
 
+> This repository is the umbrella for the auth stack's three-layer separation of concerns ([authentication & token issuance](https://github.com/o3co/auth.provider) / [authorization decision](https://github.com/o3co/auth.policy-verifier) / [authorization enforcement](https://github.com/o3co/protobuf.interceptors)), and provides stack-level architecture docs and cross-component E2E tests. Perimeter protection against invalid / revoked tokens is handled by the optional [auth.proxy](https://github.com/o3co/auth.proxy), which sits outside the three layers.
+
 Lightweight auth platform for early-stage projects.
 
 A complete authentication + authorization stack that works out of the box. Each component runs as a standalone HTTP service and can be individually replaced with an enterprise alternative (Keycloak, OPA, Cedar, Envoy, etc.) as requirements grow — no application code changes required.

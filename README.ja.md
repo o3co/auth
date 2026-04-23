@@ -1,5 +1,7 @@
 # auth
 
+> このリポジトリは、auth スタックの 3 層責務分離（[認証・トークン発行](https://github.com/o3co/auth.provider) / [認可判定](https://github.com/o3co/auth.policy-verifier) / [認可実施](https://github.com/o3co/protobuf.interceptors)）をまとめる総合リポで、スタック全体のアーキテクチャドキュメントとクロスコンポーネント E2E テストを提供します。不正／失効トークンの境界での遮断は、3 層の外にある任意のゲート [auth.proxy](https://github.com/o3co/auth.proxy) が担います。
+
 初期段階のプロジェクト向け軽量認証プラットフォーム。
 
 認証 + 認可のスタックがすぐに動く一式。各コンポーネントはスタンドアロンの HTTP サービスとして動作し、要件の成長に合わせて個別にエンタープライズ代替（Keycloak、OPA、Cedar、Envoy 等）へ差し替え可能。アプリケーションコードの変更は不要。
