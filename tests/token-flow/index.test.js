@@ -25,11 +25,13 @@ const proxy = axios.create({
 
 describe('Token Flow: provider -> proxy', () => {
   it('proxy allows request with valid token from provider', async () => {
-    // 1. Create a valid token (simulating provider issuance)
+    // 1. Create a valid token (simulating provider issuance).
+    // The provider pins the RFC 9068 `typ` header — access tokens must
+    // carry `at+jwt` or introspection reports them inactive.
     const token = jwt.sign(
       { user: { id: 1 }, scopes: ['read'] },
       JWT_SECRET,
-      { expiresIn: 60 }
+      { expiresIn: 60, header: { typ: 'at+jwt' } }
     );
 
     // 2. Verify provider introspects it as active (self-introspect via Bearer)
@@ -60,10 +62,12 @@ describe('Token Flow: provider -> proxy', () => {
   });
 
   it('proxy rejects expired token', async () => {
+    // The provider's verifier allows 5 minutes of clock skew on `exp`
+    // (DEFAULT_CLOCK_SKEW_MS), so expire well beyond that window.
     const token = jwt.sign(
       { user: { id: 1 } },
       JWT_SECRET,
-      { expiresIn: -1 }
+      { expiresIn: -600, header: { typ: 'at+jwt' } }
     );
 
     // Use a proxied route (not /_healthcheck which bypasses auth)
