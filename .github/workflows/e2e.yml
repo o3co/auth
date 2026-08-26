@@ -1,0 +1,46 @@
+name: e2e
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable pnpm via corepack
+        run: |
+          npm install -g corepack --force
+          corepack enable
+          corepack prepare pnpm@10.29.3 --activate
+
+      # `make setup` clones sibling repos with SSH URLs; runners have no SSH
+      # key, and all o3co repos are public, so rewrite to plain HTTPS.
+      - name: Clone sibling repos over HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      # docker-compose.yml mounts ~/.npmrc as a build secret. All @o3co
+      # packages resolve from the public npm registry, so an empty file is
+      # enough — the secret just has to exist.
+      - name: Provide npmrc secret file
+        run: touch ~/.npmrc
+
+      - name: Run E2E suite
+        run: make test-e2e
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose -f tests/docker-compose.yml logs --no-color || true
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f tests/docker-compose.yml down --remove-orphans || true
