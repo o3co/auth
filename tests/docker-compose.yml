@@ -11,8 +11,8 @@ services:
 
   provider:
     build:
-      context: ..
-      dockerfile: tests/dockerfiles/provider.Dockerfile
+      context: ../repos/auth.provider
+      dockerfile: ../../tests/dockerfiles/provider.Dockerfile
       target: runtime
       secrets:
         - npmrc
@@ -25,6 +25,8 @@ services:
       - CLIENT_USER_AUTHENTICATE_URL=http://127.0.0.1:3000/authenticate
       - CLIENT_USER_AUTHENTICATE_BY_TOKEN_URL=http://127.0.0.1:3000/authenticate/token
       - SESSION_SECURE=false
+      # __Host- prefixed default requires secure=true; plain-HTTP E2E needs both overrides
+      - SESSION_NAME=auth.session
       - CLIENT_CODE_ENDPOINT_URI=redis://redis:6379
     depends_on:
       redis:
@@ -45,8 +47,10 @@ services:
     ports:
       - "3098:80"
     environment:
+      # auth.mode has no default — the proxy refuses to boot without it
+      - AUTH_MODE=validation
       - INTROSPECT_URL=http://provider:3000/oauth/introspect
-      - ENDPOINT_BASEURL=http://provider:3000
+      - UPSTREAM_BASEURL=http://provider:3000
     depends_on:
       provider:
         condition: service_healthy
