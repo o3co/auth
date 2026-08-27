@@ -65,10 +65,25 @@ export async function login(username = USERNAME, password = PASSWORD) {
 		body: JSON.stringify({ username, password }),
 		redirect: 'manual',
 	});
-	const cookie = (res.headers.getSetCookie?.() ?? [])
-		.map((c) => c.split(';')[0])
-		.join('; ');
-	return { status: res.status, cookie, body: await res.json().catch(() => null) };
+	// `Headers#getSetCookie()` is the correct reader — it keeps multiple
+	// Set-Cookie headers separate, which `get()` cannot (it folds them into one
+	// comma-joined string). It needs Node 20+/undici, so fall back to the plain
+	// header for anything older rather than silently producing no cookie.
+	const setCookie =
+		res.headers.getSetCookie?.() ??
+		(res.headers.get('set-cookie') ? [res.headers.get('set-cookie')] : []);
+	const cookie = setCookie.map((c) => c.split(';')[0]).join('; ');
+	const body = await res.json().catch(() => null);
+	// Every caller logs in expecting to get a session. Failing here names the
+	// cause; returning an empty cookie would surface later as an unexplained
+	// "/authorize did not return a code".
+	if (res.status === 200 && !cookie.includes('auth.session=')) {
+		throw new Error(
+			`login succeeded but no auth.session cookie was readable (got "${cookie}"). ` +
+				'If this Node build lacks Headers#getSetCookie, the fallback above did not fire.',
+		);
+	}
+	return { status: res.status, cookie, body };
 }
 
 /**
