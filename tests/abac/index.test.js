@@ -10,6 +10,22 @@ import jwt from 'jsonwebtoken';
 
 const VERIFIER_URL = process.env.VERIFIER_URL || 'http://localhost:3097';
 const JWT_SECRET = process.env.OAUTH_JWT_SECRET || 'test-secret-for-e2e';
+const ISSUER = process.env.OAUTH_JWT_ISSUER || 'https://auth.e2e.test';
+const AUDIENCE = process.env.OAUTH_JWT_AUDIENCE || 'https://api.e2e.test';
+
+/*
+ * The verifier validates `iss` / `aud` / the `typ` header alongside the
+ * signature (RFC 9068 §4 — auth.policy-verifier#105), so a token that carries
+ * only a scope is rejected as `invalid_token` before any rule runs. Mint every
+ * E2E token through here so the envelope matches what the deployment pins.
+ */
+function signToken(claims, options = {}) {
+  return jwt.sign(
+    { iss: ISSUER, aud: AUDIENCE, ...claims },
+    JWT_SECRET,
+    { expiresIn: 60, header: { typ: 'at+jwt' }, ...options },
+  );
+}
 
 const verifier = axios.create({
   baseURL: VERIFIER_URL,
@@ -18,11 +34,7 @@ const verifier = axios.create({
 
 describe('ABAC: POST /verify', () => {
   it('allows when scope matches resource action', async () => {
-    const token = jwt.sign(
-      { user: { id: 1 }, scope: 'read:project' },
-      JWT_SECRET,
-      { expiresIn: 60 },
-    );
+    const token = signToken({ user: { id: 1 }, scope: 'read:project' });
 
     const res = await verifier.post('/verify', {
       resource: 'project:1',
@@ -36,11 +48,7 @@ describe('ABAC: POST /verify', () => {
   });
 
   it('denies when scope does not match resource action', async () => {
-    const token = jwt.sign(
-      { user: { id: 1 }, scope: 'write:project' },
-      JWT_SECRET,
-      { expiresIn: 60 },
-    );
+    const token = signToken({ user: { id: 1 }, scope: 'write:project' });
 
     const res = await verifier.post('/verify', {
       resource: 'project:1',
@@ -79,11 +87,7 @@ describe('ABAC: POST /verify', () => {
   });
 
   it('denies with 401 for expired JWT', async () => {
-    const token = jwt.sign(
-      { user: { id: 1 }, scope: 'read:project' },
-      JWT_SECRET,
-      { expiresIn: -1 },
-    );
+    const token = signToken({ user: { id: 1 }, scope: 'read:project' }, { expiresIn: -1 });
 
     const res = await verifier.post('/verify', {
       resource: 'project:1',
@@ -98,11 +102,7 @@ describe('ABAC: POST /verify', () => {
   });
 
   it('allows nested resource when scope matches', async () => {
-    const token = jwt.sign(
-      { user: { id: 1 }, scope: 'read:project_member' },
-      JWT_SECRET,
-      { expiresIn: 60 },
-    );
+    const token = signToken({ user: { id: 1 }, scope: 'read:project_member' });
 
     const res = await verifier.post('/verify', {
       resource: 'project:1.member:2',
