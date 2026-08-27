@@ -20,6 +20,10 @@ services:
       - "3099:3000"
     environment:
       - OAUTH_JWT_SECRET=test-secret-for-e2e
+      # auth.provider requires a canonical issuer and never derives one from the
+      # request (auth.provider#266). It is an identifier, not a URL anything
+      # fetches, so the E2E pins a fixed one both services agree on.
+      - OAUTH_JWT_ISSUER=https://auth.e2e.test
       - SESSION_SECRET=test-session-secret
       - SESSION_STORAGE_REDIS_URL=redis://redis:6379
       - CLIENT_USER_AUTHENTICATE_URL=http://127.0.0.1:3000/authenticate
@@ -73,6 +77,11 @@ services:
       - ./abac/application.conf:/home/node/templates/standalone/config/application.conf:ro
     environment:
       - OAUTH_JWT_SECRET=test-secret-for-e2e
+      # auth.policy-verifier validates iss / aud / typ per RFC 9068 §4 and
+      # refuses to boot without them (auth.policy-verifier#105). The issuer must
+      # match what the provider stamps.
+      - OAUTH_JWT_ISSUER=https://auth.e2e.test
+      - OAUTH_JWT_AUDIENCE=https://api.e2e.test
     depends_on:
       provider:
         condition: service_healthy
