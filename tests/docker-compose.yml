@@ -18,6 +18,12 @@ services:
         - npmrc
     ports:
       - "3099:3000"
+    volumes:
+      # The template ships an EMPTY clients.yaml and no users.yaml at all, so
+      # the E2E supplies both. Paths are cwd-relative in application.conf and
+      # the image's WORKDIR is /home/node/templates/standalone.
+      - ./provider/clients.yaml:/home/node/templates/standalone/config/clients.yaml:ro
+      - ./provider/users.yaml:/home/node/templates/standalone/config/users.yaml:ro
     environment:
       - OAUTH_JWT_SECRET=test-secret-for-e2e
       # auth.provider requires a canonical issuer and never derives one from the
@@ -25,13 +31,69 @@ services:
       # fetches, so the E2E pins a fixed one both services agree on.
       - OAUTH_JWT_ISSUER=https://auth.e2e.test
       - SESSION_SECRET=test-session-secret
-      - SESSION_STORAGE_REDIS_URL=redis://redis:6379
-      - CLIENT_USER_AUTHENTICATE_URL=http://127.0.0.1:3000/authenticate
-      - CLIENT_USER_AUTHENTICATE_BY_TOKEN_URL=http://127.0.0.1:3000/authenticate/token
       - SESSION_SECURE=false
       # __Host- prefixed default requires secure=true; plain-HTTP E2E needs both overrides
       - SESSION_NAME=auth.session
-      - CLIENT_CODE_ENDPOINT_URI=redis://redis:6379
+
+      # ---- Redis-backed state -------------------------------------------
+      # DEPLOYMENT_MODE=multi makes the provider itself audit this block:
+      # boot FAILS naming every offender if any shared store is still held in
+      # process memory (auth.provider#271/#315). The E2E declares it so a
+      # future drift back to an in-memory store is a red build, not a suite
+      # that silently stops exercising the Redis paths — the exact failure
+      # this issue was filed for.
+      - DEPLOYMENT_MODE=multi
+      # THE key the old compose was missing. One ioredis socket per replica
+      # backs the refresh-token-family store AND — via
+      # standaloneRedisClientsModule — the 4 user-session stores, the rate
+      # limiter, and the authorization-code repository. It defaults to
+      # redis://localhost:6379, which is nothing inside the container, so
+      # without this the provider retried a dead socket while the old suite
+      # stayed green.
+      - REFRESH_TOKEN_FAMILY_STORE_REDIS_URL=redis://redis:6379
+      # express-session's own store; a separate connection from the shared
+      # ioredis socket above, hence a separate URL.
+      - SESSION_STORAGE_REDIS_URL=redis://redis:6379
+      # The four user-session stores (session, RP registry, family index,
+      # federation index) — memory by default, which DEPLOYMENT_MODE=multi
+      # refuses.
+      - USER_SESSION_STORES_ADAPTER=redis
+      # OAuth-endpoint rate-limit counters — memory by default, likewise
+      # refused under multi.
+      - RATE_LIMITER_ADAPTER=redis
+      # Authorization-code repository. Already the template default, pinned
+      # here because the whole point of the suite is that codes round-trip
+      # through Redis rather than a per-process Map.
+      - OAUTH_CODE_ADAPTER=redis
+      # NOTE: the legacy CLIENT_CODE_ENDPOINT_URI that used to sit here is
+      # gone. It feeds `repositories.code.redis.endpointUri`, which nothing
+      # reads once `oauth.code.adapter = "redis"` routes the code repository
+      # onto the shared socket above — it was a no-op pretending to be
+      # configuration.
+
+      # ---- Repositories --------------------------------------------------
+      # The template defaults the user repository to "http", which needs an
+      # external identity service. The E2E has none, so it uses the built-in
+      # YAML directory and mounts users.yaml above.
+      - CLIENT_USER_TYPE=yaml
+
+      # ---- Issuance policy the suite means to exercise --------------------
+      # RFC 8707 resource indicators are opt-in (secure-by-default). The E2E
+      # turns them on because that is how `/authorize?resource=...` stamps
+      # `aud: https://api.e2e.test` on the access token — the audience
+      # auth.policy-verifier pins. Without it the provider mints a token the
+      # verifier is right to reject, and the cross-component contract cannot
+      # be exercised at all.
+      - OAUTH_RESOURCE_INDICATOR_ENABLED=true
+      # #297/#320: refuse to mint for a user whose email the Store has not
+      # verified. On by default here (it ships off) so the happy path proves
+      # the gate lets a verified user through, and the negative case proves it
+      # stops an unverified one.
+      - OAUTH_REQUIRE_EMAIL_VERIFIED=true
+      # Public clients are forced onto S256 by the provider regardless; pinning
+      # it globally means a future confidential client in this suite cannot
+      # quietly fall back to `plain`.
+      - OAUTH_GRANTS_AUTHORIZATION_CODE_PKCE_REQUIRE_S256=true
     depends_on:
       redis:
         condition: service_healthy
@@ -79,7 +141,8 @@ services:
       - OAUTH_JWT_SECRET=test-secret-for-e2e
       # auth.policy-verifier validates iss / aud / typ per RFC 9068 §4 and
       # refuses to boot without them (auth.policy-verifier#105). The issuer must
-      # match what the provider stamps.
+      # match what the provider stamps, and the audience must match what the
+      # provider's `resource` parameter puts on the access token.
       - OAUTH_JWT_ISSUER=https://auth.e2e.test
       - OAUTH_JWT_AUDIENCE=https://api.e2e.test
     depends_on:

@@ -1,0 +1,50 @@
+# Client registrations for the cross-component E2E, mounted over the
+# standalone template's `config/clients.yaml` (which ships empty).
+#
+# `firstParty: true` is REQUIRED for a client to use `/authorize`
+# (auth.provider#267/#316/#330). `/authorize` mints a code as soon as the
+# session is authenticated, with no consent step, so the provider admits only
+# clients the operator vouches for. There is no opt-out: the one-time
+# `allowUnmarkedClients` migration flag was removed in #330, and a config still
+# setting it fails at boot.
+#
+# `tokenEndpointAuthMethod: "none"` makes this a public client, which is what
+# the E2E wants: the provider then MANDATES PKCE/S256 at `/authorize`
+# regardless of operator config (RFC 9700 §2.1.1), so the suite exercises the
+# strict path rather than whatever `pkce.requireS256` happens to be set to.
+#
+# `allowedAudiences` is what lets the RFC 8707 `resource` parameter stamp
+# `aud: https://api.e2e.test` on the access token — the value
+# auth.policy-verifier pins via OAUTH_JWT_AUDIENCE. Without it the minted token
+# carries no audience the verifier will accept.
+e2e-app:
+  tokenEndpointAuthMethod: "none"
+  firstParty: true
+  allowedRedirectUris:
+    - "http://localhost:9099/callback"
+  allowedScopes:
+    - "openid"
+    - "email"
+    - "read:project"
+    - "read:project_member"
+  allowedAudiences:
+    - "https://api.e2e.test"
+  allowedGrantTypes:
+    - "authorization_code"
+    - "refresh_token"
+
+# A deliberately unmarked client. `/authorize` must refuse it with
+# `unauthorized_client` — this is the negative half of the first-party
+# invariant, and it is registered here so the suite can prove the refusal
+# rather than assume it.
+e2e-third-party:
+  tokenEndpointAuthMethod: "none"
+  firstParty: false
+  allowedRedirectUris:
+    - "http://localhost:9099/callback"
+  allowedScopes:
+    - "read:project"
+  allowedAudiences:
+    - "https://api.e2e.test"
+  allowedGrantTypes:
+    - "authorization_code"
