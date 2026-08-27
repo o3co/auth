@@ -217,28 +217,52 @@ describe('/authorize admission rules', () => {
 	}, 30_000);
 });
 
-describe('Token flow: provider -> proxy', () => {
-	it('proxy allows a request carrying a provider-issued token', async () => {
-		const res = await proxy.get('/_healthcheck', {
+describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
+	/*
+	 * The proxy runs in `validation` mode: when a request carries an
+	 * Authorization header, it introspects the token against INTROSPECT_URL
+	 * (the provider's /oauth/introspect) and refuses the request unless the
+	 * response says `active: true`. Only then does it forward upstream.
+	 *
+	 * Which side rejected a request is decidable from the body, and these
+	 * tests assert on it rather than on the status alone:
+	 *   - proxy:    {"code":401,"message":"Invalid Token"}   (its own shape)
+	 *   - provider: {"error":"invalid_token", ...}           (RFC 6750 shape)
+	 *
+	 * Asserting only the status would let "the proxy forwarded everything and
+	 * the upstream happened to reject it" pass as "the proxy validates".
+	 */
+
+	it('forwards a provider-issued token upstream and returns the upstream response', async () => {
+		// A route the proxy actually authenticates. NOT /_healthcheck: that is
+		// mounted ahead of the auth middleware and never reaches it, so a 200
+		// there says nothing about whether a token was accepted.
+		const res = await proxy.get('/oauth/userinfo', {
 			headers: { Authorization: `Bearer ${grant.access_token}` },
 		});
 		expect(res.status).toBe(200);
+		// The body is the upstream's, so this proves the whole round-trip:
+		// proxy introspected the token against the provider, got `active:true`,
+		// forwarded the request with the Authorization header intact, and
+		// returned what /oauth/userinfo produced.
+		expect(res.data).toEqual({
+			sub: 'user-e2e-1',
+			email: 'e2e-user@e2e.test',
+			email_verified: true,
+		});
 	});
 
-	it('proxy rejects request with invalid token', async () => {
-		// Use a proxied route (not /_healthcheck which bypasses auth)
-		const res = await proxy.get('/oauth', {
+	it('rejects a garbage token at the proxy, before the upstream', async () => {
+		const res = await proxy.get('/oauth/userinfo', {
 			headers: { Authorization: 'Bearer invalid.token.here' },
 		});
 		expect(res.status).toBe(401);
+		// The proxy's own error shape — introspection returned inactive and the
+		// request never reached the provider's /oauth/userinfo.
+		expect(res.data).toEqual({ code: 401, message: 'Invalid Token' });
 	});
 
-	it('proxy passes through request without Authorization header', async () => {
-		const res = await proxy.get('/_healthcheck');
-		expect(res.status).toBe(200);
-	});
-
-	it('proxy rejects expired token', async () => {
+	it('rejects an expired token at the proxy', async () => {
 		// Hand-signed on purpose: the provider will not mint an already-expired
 		// token, and the envelope still has to match what it issues or the
 		// rejection would prove nothing about expiry. The provider's verifier
@@ -248,7 +272,47 @@ describe('Token flow: provider -> proxy', () => {
 			expiresIn: -600,
 			header: { typ: 'at+jwt' },
 		});
-		const res = await proxy.get('/oauth', { headers: { Authorization: `Bearer ${token}` } });
+		const res = await proxy.get('/oauth/userinfo', {
+			headers: { Authorization: `Bearer ${token}` },
+		});
 		expect(res.status).toBe(401);
+		expect(res.data).toEqual({ code: 401, message: 'Invalid Token' });
+	});
+
+	it('rejects an id_token at the proxy', async () => {
+		// Introspection reports a non-access token as inactive, so the same
+		// "only access tokens are credentials" rule the policy-verifier
+		// enforces by `typ` also holds at the proxy — by a different mechanism.
+		const res = await proxy.get('/oauth/userinfo', {
+			headers: { Authorization: `Bearer ${grant.id_token}` },
+		});
+		expect(res.status).toBe(401);
+		expect(res.data).toEqual({ code: 401, message: 'Invalid Token' });
+	});
+
+	it('rejects a non-Bearer authorization scheme', async () => {
+		const res = await proxy.get('/oauth/userinfo', { headers: { Authorization: 'Basic abc' } });
+		expect(res.status).toBe(400);
+		expect(res.data).toEqual({ code: 400, message: 'Invalid Token Type' });
+	});
+
+	it('passes an unauthenticated request through to the upstream', async () => {
+		// No Authorization header means the proxy does not introspect at all —
+		// it forwards, and the upstream decides. The RFC 6750 error shape is
+		// the proof that the request really did reach the provider rather than
+		// being short-circuited by the proxy.
+		const res = await proxy.get('/oauth/userinfo');
+		expect(res.status).toBe(401);
+		expect(res.data.error).toBe('invalid_token');
+		expect(res.data.code).toBeUndefined();
+	});
+
+	it('serves its own liveness endpoint (not an auth assertion)', async () => {
+		// /_healthcheck is mounted ahead of the auth middleware, so it is only
+		// ever evidence that the proxy process is up. Do not add an
+		// Authorization header here and read a 200 as acceptance — that was the
+		// original defect in this suite.
+		const res = await proxy.get('/_healthcheck');
+		expect(res.status).toBe(200);
 	});
 });
