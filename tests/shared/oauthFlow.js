@@ -20,7 +20,25 @@ export const VERIFIER_URL = process.env.VERIFIER_URL || 'http://localhost:3097';
 
 export const ISSUER = process.env.OAUTH_JWT_ISSUER || 'https://auth.e2e.test';
 export const AUDIENCE = process.env.OAUTH_JWT_AUDIENCE || 'https://api.e2e.test';
-export const JWT_SECRET = process.env.OAUTH_JWT_SECRET || 'test-secret-for-e2e';
+/**
+ * Must equal the containers' `OAUTH_JWT_SECRET` in tests/docker-compose.yml.
+ * The negative ABAC tests mint their own tokens with it, so a value that
+ * merely looks plausible produces 401s that read like a policy failure.
+ * There is deliberately no fallback: auth.provider#282 put a >=32-byte floor
+ * on the secret, and a default here would silently drift from compose again
+ * the next time the floor or the value changes.
+ */
+export const JWT_SECRET = requireEnv('OAUTH_JWT_SECRET');
+
+function requireEnv(name) {
+	const value = process.env[name];
+	if (!value) {
+		throw new Error(
+			`${name} is not set. Run the suite through \`make test-e2e\`, which exports it from tests/docker-compose.yml.`,
+		);
+	}
+	return value;
+}
 
 /** Marked `firstParty: true` in tests/provider/clients.yaml. */
 export const CLIENT_ID = 'e2e-app';

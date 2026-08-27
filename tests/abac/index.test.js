@@ -41,14 +41,19 @@ function signToken(claims, options = {}) {
 
 /** Grant carrying `read:project`. */
 let projectGrant;
-/** Grant carrying only `read:project_member` — used for the deny case. */
+/**
+ * Grant carrying only `read:project.member` — used for the deny case, and for
+ * the nested-resource allow. The scope name tracks the resource type the
+ * verifier derives: auth.policy-verifier#117 stopped rewriting the `.`
+ * separator to `_`, so `project:1.member:2` now derives `project.member`.
+ */
 let memberGrant;
 
 beforeAll(async () => {
 	const session = await login();
 	expect(session.status).toBe(200);
 	projectGrant = await codeFlow({ cookie: session.cookie, scope: 'openid read:project' });
-	memberGrant = await codeFlow({ cookie: session.cookie, scope: 'openid read:project_member' });
+	memberGrant = await codeFlow({ cookie: session.cookie, scope: 'openid read:project.member' });
 }, 30_000);
 
 describe('ABAC: POST /verify with provider-issued access tokens', () => {

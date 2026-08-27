@@ -26,7 +26,7 @@ e2e-app:
     - "openid"
     - "email"
     - "read:project"
-    - "read:project_member"
+    - "read:project.member"
   allowedAudiences:
     - "https://api.e2e.test"
   allowedGrantTypes:

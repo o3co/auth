@@ -25,12 +25,24 @@ services:
       - ./provider/clients.yaml:/home/node/templates/standalone/config/clients.yaml:ro
       - ./provider/users.yaml:/home/node/templates/standalone/config/users.yaml:ro
     environment:
-      - OAUTH_JWT_SECRET=test-secret-for-e2e
+      # auth.provider#282 made EdDSA the default and removed the HS256
+      # fallback, so the algorithm must be named explicitly. The E2E stays on
+      # HS256 deliberately: the verifier requires https for a JWKS URI, with an
+      # http carve-out only for loopback (auth.policy-verifier#109), and here it
+      # would reach the provider at http://provider:3000 — a compose service
+      # name, not loopback. A JWKS-based E2E would fail the verifier's boot
+      # check, so the two services share a secret instead.
+      - OAUTH_JWT_ALGORITHM=HS256
+      # #282 also put a >=32-byte floor on the decoded secret, measured at the
+      # smallest plausible reading. The value is defined once in the Makefile
+      # and interpolated here, because the ABAC tests mint tokens with the same
+      # secret — a second literal is how the two drifted apart before.
+      - OAUTH_JWT_SECRET=${OAUTH_JWT_SECRET:?run via make test-e2e}
       # auth.provider requires a canonical issuer and never derives one from the
       # request (auth.provider#266). It is an identifier, not a URL anything
       # fetches, so the E2E pins a fixed one both services agree on.
       - OAUTH_JWT_ISSUER=https://auth.e2e.test
-      - SESSION_SECRET=test-session-secret
+      - SESSION_SECRET=lO0QH09fuKSGuViZ9myJbH3jsgai99A2GpC3RYRuy6Y=
       - SESSION_SECURE=false
       # __Host- prefixed default requires secure=true; plain-HTTP E2E needs both overrides
       - SESSION_NAME=auth.session
@@ -138,7 +150,9 @@ services:
     volumes:
       - ./abac/application.conf:/home/node/templates/standalone/config/application.conf:ro
     environment:
-      - OAUTH_JWT_SECRET=test-secret-for-e2e
+      # Same interpolated secret as the provider — under HS256 the verifier
+      # holds the shared secret it verifies with.
+      - OAUTH_JWT_SECRET=${OAUTH_JWT_SECRET:?run via make test-e2e}
       # auth.policy-verifier validates iss / aud / typ per RFC 9068 §4 and
       # refuses to boot without them (auth.policy-verifier#105). The issuer must
       # match what the provider stamps, and the audience must match what the

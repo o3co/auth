@@ -40,6 +40,13 @@ build: setup
 	cd repos/auth.proxy && pnpm install && pnpm run build
 	cd repos/auth.policy-verifier && pnpm install && pnpm run build
 
+# One definition of the shared HS256 secret, interpolated into the containers
+# by docker compose and exported to the test processes, which mint their own
+# tokens with it. Defining it twice is how the suite drifted before: the tests
+# fell back to a stale literal and every negative case failed as a 401 that
+# read like a policy failure. auth.provider#282 requires >=32 decoded bytes.
+export OAUTH_JWT_SECRET := qmV+afsq/SMZ7hPGs9edVQDvPzNmjXemJNjqti181v0=
+
 .PHONY: test-e2e
 test-e2e: build
 	docker compose -f tests/docker-compose.yml up -d --build --wait
