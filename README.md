@@ -74,7 +74,7 @@ auth.policy-verifier (ABAC)
 
 For gRPC services, [protobuf.interceptors](https://github.com/o3co/protobuf.interceptors) provides interceptors that call the policy verifier (or OPA/Cedar as alternative backends).
 
-See [docs/architecture.md](docs/architecture.md) for detailed flow and component descriptions.
+See [docs/architecture.md](docs/architecture.md) for detailed flow and component descriptions, and [docs/claims-contract.md](docs/claims-contract.md) for the claim-level JWT contract between auth.provider and auth.policy-verifier.
 
 ## Getting Started
 

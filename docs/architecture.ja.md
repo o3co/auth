@@ -43,6 +43,8 @@ Client
 5. ダウンストリームサービスが `auth.policy-verifier`（`POST /verify`）を呼び出し、きめ細かな ABAC チェックを実行
 6. gRPC サービスの場合、`protobuf.interceptors` インターセプターが `.proto` オプションからポリシーを解決し、検証器を呼び出す
 
+手順 2 と 5 の間の claim レベル契約 — どの JWT claim が provider→verifier 境界を越え、誰が書き・誰が読み、それぞれの側で何を意味するか — は [claims-contract.ja.md](claims-contract.ja.md) に規定する。
+
 ## マイグレーションパス
 
 各コンポーネントはスタンドアロンの HTTP サービスとして動作する。OPA や Cedar へのマイグレーション方法:
