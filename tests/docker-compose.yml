@@ -40,8 +40,9 @@ services:
       - OAUTH_JWT_SECRET=${OAUTH_JWT_SECRET:?run via make test-e2e}
       # auth.provider requires a canonical issuer and never derives one from the
       # request (auth.provider#266). It is an identifier, not a URL anything
-      # fetches, so the E2E pins a fixed one both services agree on.
-      - OAUTH_JWT_ISSUER=https://auth.e2e.test
+      # fetches, so the E2E pins a fixed one both services agree on — defined
+      # once in the Makefile, like the secret.
+      - OAUTH_JWT_ISSUER=${OAUTH_JWT_ISSUER:?run via make test-e2e}
       - SESSION_SECRET=lO0QH09fuKSGuViZ9myJbH3jsgai99A2GpC3RYRuy6Y=
       - SESSION_SECURE=false
       # __Host- prefixed default requires secure=true; plain-HTTP E2E needs both overrides
@@ -157,8 +158,8 @@ services:
       # refuses to boot without them (auth.policy-verifier#105). The issuer must
       # match what the provider stamps, and the audience must match what the
       # provider's `resource` parameter puts on the access token.
-      - OAUTH_JWT_ISSUER=https://auth.e2e.test
-      - OAUTH_JWT_AUDIENCE=https://api.e2e.test
+      - OAUTH_JWT_ISSUER=${OAUTH_JWT_ISSUER:?run via make test-e2e}
+      - OAUTH_JWT_AUDIENCE=${OAUTH_JWT_AUDIENCE:?run via make test-e2e}
     depends_on:
       provider:
         condition: service_healthy

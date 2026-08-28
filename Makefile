@@ -47,6 +47,16 @@ build: setup
 # read like a policy failure. auth.provider#282 requires >=32 decoded bytes.
 export OAUTH_JWT_SECRET := qmV+afsq/SMZ7hPGs9edVQDvPzNmjXemJNjqti181v0=
 
+# Same one-definition rule for the issuer and audience: interpolated into the
+# containers by docker compose AND read by the test processes, which pin the
+# claims the provider stamps. The tests carried their own fallback literals
+# before (o3co/auth#12) — the exact two-definitions drift the secret already
+# had. The audience also appears once more in tests/provider/clients.yaml
+# (`allowedAudiences`), which is volume-mounted and out of interpolation's
+# reach; the comment there names this copy.
+export OAUTH_JWT_ISSUER := https://auth.e2e.test
+export OAUTH_JWT_AUDIENCE := https://api.e2e.test
+
 .PHONY: test-e2e
 test-e2e: build
 	docker compose -f tests/docker-compose.yml up -d --build --wait
