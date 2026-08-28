@@ -38,7 +38,7 @@ function requireEnv(name) {
 	const value = process.env[name];
 	if (!value) {
 		throw new Error(
-			`${name} is not set. Run the suite through \`make test-e2e\`, which exports it from tests/docker-compose.yml.`,
+			`${name} is not set. Run the suite through \`make test-e2e\` — the Makefile is the single definition (\`export ${name}\`) and feeds both compose interpolation and this process.`,
 		);
 	}
 	return value;
