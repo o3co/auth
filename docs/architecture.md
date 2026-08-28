@@ -43,6 +43,8 @@ Client
 5. Downstream service calls `auth.policy-verifier` (`POST /verify`) for fine-grained ABAC checks
 6. For gRPC services, `protobuf.interceptors` interceptors resolve policy from `.proto` options and call the verifier
 
+The claim-level contract between steps 2 and 5 — which JWT claims cross the provider→verifier boundary, who writes and reads each, and what each side means by them — is specified in [claims-contract.md](claims-contract.md).
+
 ## Migration Path
 
 Each component runs as a standalone HTTP service. To migrate to OPA or Cedar:
