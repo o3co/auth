@@ -16,7 +16,18 @@
 # `allowedAudiences` is what lets the RFC 8707 `resource` parameter stamp
 # `aud: https://api.e2e.test` on the access token — the value
 # auth.policy-verifier pins via OAUTH_JWT_AUDIENCE. Without it the minted token
-# carries no audience the verifier will accept.
+# carries no audience the verifier will accept. (The audience URL here is the
+# one deliberate second copy of OAUTH_JWT_AUDIENCE: this file is volume-mounted,
+# so compose interpolation cannot reach it.)
+#
+# `allowedScopes` is a provider-vocabulary ceiling: the provider compares these
+# strings opaquely and never parses them. The `read:project` /
+# `read:project.member` entries are nevertheless WRITTEN in
+# auth.policy-verifier's `{action}:{resourceType}` grammar
+# (ResourceActionScopeRuleCollector), because the ABAC suite needs tokens whose
+# opaque scope strings happen to satisfy the verifier's derived rule. Grammar
+# owner: auth.policy-verifier; string owner: this registration. See
+# docs/claims-contract.md.
 e2e-app:
   tokenEndpointAuthMethod: "none"
   firstParty: true

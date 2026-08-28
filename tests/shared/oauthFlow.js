@@ -18,23 +18,27 @@ export const PROVIDER_URL = process.env.PROVIDER_URL || 'http://localhost:3099';
 export const PROXY_URL = process.env.PROXY_URL || 'http://localhost:3098';
 export const VERIFIER_URL = process.env.VERIFIER_URL || 'http://localhost:3097';
 
-export const ISSUER = process.env.OAUTH_JWT_ISSUER || 'https://auth.e2e.test';
-export const AUDIENCE = process.env.OAUTH_JWT_AUDIENCE || 'https://api.e2e.test';
 /**
- * Must equal the containers' `OAUTH_JWT_SECRET` in tests/docker-compose.yml.
- * The negative ABAC tests mint their own tokens with it, so a value that
- * merely looks plausible produces 401s that read like a policy failure.
- * There is deliberately no fallback: auth.provider#282 put a >=32-byte floor
- * on the secret, and a default here would silently drift from compose again
- * the next time the floor or the value changes.
+ * All three must equal the containers' values in tests/docker-compose.yml, and
+ * all three are single-sourced in the Makefile (`export OAUTH_JWT_*`), which
+ * `make test-e2e` feeds to both compose interpolation and this process. There
+ * is deliberately no fallback on any of them: a default here would silently
+ * drift from compose the next time a value changes — the two-definitions
+ * failure mode 4ea0484 closed for the secret and o3co/auth#12 closed for
+ * issuer/audience. The secret additionally matters to the negative ABAC
+ * tests, which mint their own tokens with it: a value that merely looks
+ * plausible produces 401s that read like a policy failure (auth.provider#282
+ * put a >=32-byte floor on it).
  */
+export const ISSUER = requireEnv('OAUTH_JWT_ISSUER');
+export const AUDIENCE = requireEnv('OAUTH_JWT_AUDIENCE');
 export const JWT_SECRET = requireEnv('OAUTH_JWT_SECRET');
 
 function requireEnv(name) {
 	const value = process.env[name];
 	if (!value) {
 		throw new Error(
-			`${name} is not set. Run the suite through \`make test-e2e\`, which exports it from tests/docker-compose.yml.`,
+			`${name} is not set. Run the suite through \`make test-e2e\` — the Makefile is the single definition (\`export ${name}\`) and feeds both compose interpolation and this process.`,
 		);
 	}
 	return value;
@@ -130,7 +134,8 @@ export async function authorize({
 		// RFC 8707. This is what stamps `aud: https://api.e2e.test` on the
 		// access token — the audience auth.policy-verifier pins. Without it the
 		// provider falls back to the client id and the verifier correctly
-		// rejects the token.
+		// rejects the token. Distinct from verify()'s `resource` — the
+		// verifier's dot-notation resource string. Same word, two protocols.
 		resource,
 	};
 	for (const [k, v] of Object.entries(params)) {
@@ -220,7 +225,23 @@ export async function introspect(accessToken, token = accessToken) {
 	return { status: res.status, body: await res.json() };
 }
 
-/** POST /verify on auth.policy-verifier. */
+/**
+ * POST /verify on auth.policy-verifier.
+ *
+ * Invariant: the defaults here and authorize()'s default scope are two
+ * spellings of ONE value. The verifier derives the scope it demands as
+ * `{action}:{resourceType}` (auth.policy-verifier#117: `project:1` has
+ * resource type `project`), so `resource = 'project:1', action = 'read'`
+ * demands exactly the `read:project` that authorize() requests by default.
+ * Change either default without the other and every happy-path assertion
+ * flips. Derivation-rule owner: auth.policy-verifier
+ * (ResourceActionScopeRuleCollector); see docs/claims-contract.md.
+ *
+ * `resource` here is the verifier's POST /verify body field — a dot-notation
+ * resource string — NOT authorize()'s `resource` (the RFC 8707 indicator URI
+ * that becomes `aud`). Same word, two protocols; both mirror their wire
+ * fields exactly, so neither is renamed.
+ */
 export async function verify({ token, resource = 'project:1', action = 'read' }) {
 	const res = await fetch(`${VERIFIER_URL}/verify`, {
 		method: 'POST',
