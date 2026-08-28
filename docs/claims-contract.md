@@ -6,7 +6,9 @@ Each repo's vocabulary is absolute only within that repo: the provider writes cl
 
 ## The boundary object
 
-The RFC 9068 JWT access token. The provider assembles claims in `generateToken` (`packages/core/src/grants/token.mts`) and stamps them per grant under `packages/oauth/src/grants/`. The verifier authenticates the token in `tokenAuthenticator` (`packages/server/src/jwt/`), then builtins collectors translate the verified claims into ABAC attributes (the `ATTR_*` keys in `packages/core/src/keys.mts`).
+The RFC 9068 JWT access token. The provider assembles claims in `generateToken` (auth.provider's `packages/core/src/grants/token.mts`) and stamps them per grant under auth.provider's `packages/oauth/src/grants/`. The verifier authenticates the token in `tokenAuthenticator` (auth.policy-verifier's `packages/server/src/jwt/`), then the built-in collectors (its `packages/builtins`) translate the verified claims into ABAC attributes (the `ATTR_*` keys in auth.policy-verifier's `packages/core/src/keys.mts`).
+
+Path convention for the tables below: paths in the *Provider writes* column are relative to [o3co/auth.provider](https://github.com/o3co/auth.provider), paths in *Verifier reads* to [o3co/auth.policy-verifier](https://github.com/o3co/auth.policy-verifier), and `tests/…` paths to this repo.
 
 ## Claims that cross
 
@@ -17,7 +19,7 @@ The RFC 9068 JWT access token. The provider assembles claims in `generateToken` 
 | `azp` | The *authenticated* client id, not the raw body `client_id` (D-6 in `oauth/src/grants/authorization.mts`). | `PayloadSubjectIdCollector` → `ATTR_CLIENT_ID`. | Which client the token was issued through. |
 | `aud` | The RFC 8707 `resource` parameter echoed back as the audience; dropped on refresh when the parameter is not repeated (§2.2). | Pinned by jose verification — `oauth.jwt.audience` / `OAUTH_JWT_AUDIENCE`. | The resource server the token is addressed to. The E2E value `https://api.e2e.test` appears in `tests/provider/clients.yaml` (`allowedAudiences`) *and* the verifier's env for exactly this reason. |
 | `iss` | Deployment-configured issuer; required, never request-derived. | Pinned by jose verification — `oauth.jwt.issuer` / `OAUTH_JWT_ISSUER`. | Deployment identity. |
-| `typ` (header) | `at+jwt` on access tokens (RFC 9068), `rt+jwt` on refresh tokens, `id+jwt` on id_tokens. | `oauth.jwt.tokenType`, default `at+jwt`; an `application/` prefix on either side is ignored when comparing. | The **only** discriminator between the three token kinds — the pin is what keeps a refresh or id token signed with the same key from passing `/verify`. There is no claim-level fallback check. |
+| `typ` (header) | `at+jwt` on access tokens (RFC 9068), `rt+jwt` on refresh tokens, `id+jwt` on ID tokens (wire name `id_token`). | `oauth.jwt.tokenType`, default `at+jwt`; an `application/` prefix on either side is ignored when comparing. | The **only** discriminator between the three token kinds — the pin is what keeps a refresh or id token signed with the same key from passing `/verify`. There is no claim-level fallback check. |
 | `exp` / `iat` | Always stamped (`core/src/grants/token.mts`). | Both required (`tokenAuthenticator`'s required-claims check + the always-set `maxTokenAgeSeconds` bound); a token without `exp` is refused as a permanent credential. | Lifetime. The verifier additionally caps the issuer's `exp` rather than trusting issuer discipline. |
 
 ## Claims that do NOT cross
