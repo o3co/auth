@@ -101,7 +101,10 @@ describe('ABAC: only access tokens are decision inputs', () => {
 
 	it('rejects the id_token from the same grant', async () => {
 		const res = await verify({ token: projectGrant.id_token });
-		expect(decodeJwt(projectGrant.id_token).header.typ).toBe('id+jwt');
+		// `JWT` since auth.provider#394 (v0.10.0). What keeps an id_token out of
+		// `/verify` is being disjoint from `at+jwt`, which the standard value
+		// satisfies identically — so the refusal below is unchanged.
+		expect(decodeJwt(projectGrant.id_token).header.typ).toBe('JWT');
 		expect(res.status).toBe(401);
 		expect(res.body.decision).toBe('deny');
 		expect(res.body.code).toBe('invalid_token');

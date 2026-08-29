@@ -19,7 +19,7 @@ RFC 9068 JWT access token。provider は `generateToken`（auth.provider の `pa
 | `azp` | *認証済み* client id であり、body 生の `client_id` ではない（`oauth/src/grants/authorization.mts` の D-6）。 | `PayloadSubjectIdCollector` → `ATTR_CLIENT_ID`。 | token がどの client 経由で発行されたか。 |
 | `aud` | RFC 8707 `resource` パラメータを audience として反響。refresh でパラメータが繰り返されなければ落ちる（§2.2）。 | jose 検証でピン — `oauth.jwt.audience` / `OAUTH_JWT_AUDIENCE`。 | token の宛先 resource server。E2E 値 `https://api.e2e.test` が `tests/provider/clients.yaml`（`allowedAudiences`）**と** verifier の env の両方に現れるのはこのため。 |
 | `iss` | デプロイ設定の issuer。必須、リクエスト由来にしない。 | jose 検証でピン — `oauth.jwt.issuer` / `OAUTH_JWT_ISSUER`。 | デプロイの identity。 |
-| `typ`（header） | access token は `at+jwt`（RFC 9068）、refresh token は `rt+jwt`、ID token（wire 名 `id_token`）は `id+jwt`。 | `oauth.jwt.tokenType`、default `at+jwt`。比較時に `application/` prefix は無視。 | 3 種の token を区別する **唯一の** 判別子 — このピンが、同じ鍵で署名された refresh / id token が `/verify` を通ることを防いでいる。claim レベルの代替チェックは存在しない。 |
+| `typ`（header） | access token は `at+jwt`（RFC 9068）、refresh token は `rt+jwt`、ID token（wire 名 `id_token`）は auth.provider v0.10.0 以降は標準の `JWT`（それ以前は非標準の `id+jwt` で、`typ` を厳格に検証する外部 RP に弾かれていた）。検証側は auth.provider#402 が閉じるまでの移行期間、両方の綴りを受理する。 | `oauth.jwt.tokenType`、default `at+jwt`。比較時に `application/` prefix は無視。 | 3 種の token を区別する **唯一の** 判別子 — このピンが、同じ鍵で署名された refresh / id token が `/verify` を通ることを防いでいる。防いでいる実体は **`at+jwt` と互いに素であること** であり、`JWT` は `id+jwt` と同様にこれを満たす。claim レベルの代替チェックは存在しない。 |
 | `exp` / `iat` | 常に刻印（`core/src/grants/token.mts`）。 | 両方必須（`tokenAuthenticator` の必須 claim チェック + 常設の `maxTokenAgeSeconds` 上限）。`exp` のない token は永続 credential として拒否。 | 寿命。verifier は issuer の規律を信頼せず、issuer の `exp` をさらに上限で抑える。 |
 
 ## 境界を越えない claim

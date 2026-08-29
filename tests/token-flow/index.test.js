@@ -89,7 +89,15 @@ describe('Real grant path: login -> /authorize (PKCE) -> /token', () => {
 		// (see the negative tests in tests/abac). Pinning all three here means
 		// a provider-side change to any of them fails on this repo's CI rather
 		// than silently widening what /verify accepts.
-		expect(decodeJwt(grant.id_token).header.typ).toBe('id+jwt');
+		//
+		// The id_token stamps the standard `JWT` as of auth.provider#394
+		// (v0.10.0): the nonstandard `id+jwt` failed strict external RPs and
+		// bought nothing, because what keeps an id_token out of `/verify` is
+		// being disjoint from RFC 9068's `at+jwt` — which `JWT` satisfies just
+		// as well. Verification accepts both spellings during the migration
+		// window auth.provider#402 closes; this pins what the provider MINTS,
+		// so it is the standard value with no dual accept.
+		expect(decodeJwt(grant.id_token).header.typ).toBe('JWT');
 		expect(decodeJwt(grant.refresh_token).header.typ).toBe('rt+jwt');
 	});
 
