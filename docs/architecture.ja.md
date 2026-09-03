@@ -34,6 +34,16 @@ Client
 | auth.policy-verifier | Node.js/TS | [o3co/auth.policy-verifier](https://github.com/o3co/auth.policy-verifier) | DSL 不要の ABAC ポリシー検証器（Collector パターン） |
 | protobuf.interceptors | Go | [o3co/protobuf.interceptors](https://github.com/o3co/protobuf.interceptors) | gRPC ポリシー適用インターセプター |
 
+### Probe
+
+HTTP コンポーネントはすべて liveness probe として `GET /_healthcheck` を提供する。常に `200` を返し、依存先には一切触れない — プロセスが起動していてポートが応答することだけを証明するので、ロードバランサーやロールアウトをこれでゲートしてはならない。`auth.provider` はこれに加えて `GET /readyz` を提供し、こちらは依存先の probe を実際に走らせ、レプリカをローテーションから外すべきときは `503` を返す。`auth.policy-verifier` はスタックが綴りを 1 つに揃える前は `GET /healthcheck` で応答していたため、そのパスを `/_healthcheck` の互換 alias として残している — そのパスのままの probe 設定でも動き続ける。新しい probe の設定はすべて `/_healthcheck` で行うこと。`protobuf.interceptors` はライブラリで、自身の endpoint を持たない。
+
+| コンポーネント | Liveness | Readiness |
+| --- | --- | --- |
+| auth.provider | `GET /_healthcheck` | `GET /readyz` |
+| auth.proxy | `GET /_healthcheck` | — |
+| auth.policy-verifier | `GET /_healthcheck`（alias: `GET /healthcheck`） | — |
+
 ## 認証フロー
 
 1. クライアントが `auth.provider` で認証（セッションログイン、OAuth 認可コード、DID）
