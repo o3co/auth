@@ -34,6 +34,16 @@ Client
 | auth.policy-verifier | Node.js/TS | [o3co/auth.policy-verifier](https://github.com/o3co/auth.policy-verifier) | No-DSL ABAC policy verifier with Collector pattern |
 | protobuf.interceptors | Go | [o3co/protobuf.interceptors](https://github.com/o3co/protobuf.interceptors) | gRPC interceptors for policy enforcement |
 
+### Probes
+
+Every HTTP component serves `GET /_healthcheck` as its liveness probe. It always answers `200` and touches no dependency, so it proves only that the process is up and its port answers — never gate a load balancer or a rollout on it. `auth.provider` additionally serves `GET /readyz`, which does run its dependency probes and answers `503` when a replica should be taken out of rotation. `auth.policy-verifier` answered on `GET /healthcheck` before the stack settled on one spelling; it keeps that path as a compatibility alias of `/_healthcheck`, so a probe config that still names it keeps working. Configure new probes with `/_healthcheck` everywhere. `protobuf.interceptors` is a library and serves no endpoint of its own.
+
+| Component | Liveness | Readiness |
+| --- | --- | --- |
+| auth.provider | `GET /_healthcheck` | `GET /readyz` |
+| auth.proxy | `GET /_healthcheck` | — |
+| auth.policy-verifier | `GET /_healthcheck` (alias: `GET /healthcheck`) | — |
+
 ## Auth Flow
 
 1. Client authenticates via `auth.provider` (session login, OAuth authorization code, DID)
