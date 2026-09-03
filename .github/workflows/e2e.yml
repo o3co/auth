@@ -39,8 +39,8 @@ jobs:
 
       - name: Dump container logs on failure
         if: failure()
-        run: docker compose -f tests/docker-compose.yml logs --no-color || true
+        run: make logs || true
 
       - name: Teardown
         if: always()
-        run: docker compose -f tests/docker-compose.yml down --remove-orphans || true
+        run: make clean

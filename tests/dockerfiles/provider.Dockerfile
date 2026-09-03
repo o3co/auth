@@ -17,7 +17,12 @@ FROM node-base AS deps
 COPY package.json pnpm-lock.yaml ./
 # Override workspace config to exclude create-app (not needed for runtime)
 RUN printf 'packages:\n  - "packages/*"\n  - "templates/*"\n' > pnpm-workspace.yaml
+# Hand-maintained: one line per packages/* in auth.provider, here AND in the
+# runtime stage below. A package missing from this list is absent from the
+# workspace pnpm installs, so its build finds no node_modules (#432 added
+# device-grant and this file did not follow).
 COPY packages/core/package.json packages/core/package.json
+COPY packages/device-grant/package.json packages/device-grant/package.json
 COPY packages/dpop/package.json packages/dpop/package.json
 COPY packages/federation-github/package.json packages/federation-github/package.json
 COPY packages/federation-google/package.json packages/federation-google/package.json
@@ -50,6 +55,7 @@ ENV NODE_ENV=production
 COPY --from=deps /home/node/package.json /home/node/pnpm-lock.yaml ./
 COPY --from=deps /home/node/pnpm-workspace.yaml ./
 COPY --from=deps /home/node/packages/core/package.json packages/core/package.json
+COPY --from=deps /home/node/packages/device-grant/package.json packages/device-grant/package.json
 COPY --from=deps /home/node/packages/dpop/package.json packages/dpop/package.json
 COPY --from=deps /home/node/packages/federation-github/package.json packages/federation-github/package.json
 COPY --from=deps /home/node/packages/federation-google/package.json packages/federation-google/package.json
@@ -70,6 +76,7 @@ RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc \
 
 COPY --from=builder /home/node/packages/core/dist/ packages/core/dist/
 COPY --from=builder /home/node/packages/core/config/ packages/core/config/
+COPY --from=builder /home/node/packages/device-grant/dist/ packages/device-grant/dist/
 COPY --from=builder /home/node/packages/dpop/dist/ packages/dpop/dist/
 COPY --from=builder /home/node/packages/federation-github/dist/ packages/federation-github/dist/
 COPY --from=builder /home/node/packages/federation-google/dist/ packages/federation-google/dist/

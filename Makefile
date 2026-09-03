@@ -64,6 +64,15 @@ test-e2e: build
 	cd tests/abac && pnpm install && pnpm vitest run
 	docker compose -f tests/docker-compose.yml down
 
+# Container logs for a failed run. A target rather than a bare `docker compose
+# logs` because compose interpolates OAUTH_JWT_* into the provider service and
+# refuses to start without them; only this Makefile exports the values, so a
+# workflow step that calls compose directly prints the interpolation error
+# instead of the logs it was asked for.
+.PHONY: logs
+logs:
+	docker compose -f tests/docker-compose.yml logs --no-color
+
 .PHONY: clean
 clean:
-	docker compose -f tests/docker-compose.yml down 2>/dev/null || true
+	docker compose -f tests/docker-compose.yml down --remove-orphans 2>/dev/null || true
