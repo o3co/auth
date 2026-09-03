@@ -83,6 +83,15 @@ services:
       # reads once `oauth.code.adapter = "redis"` routes the code repository
       # onto the shared socket above — it was a no-op pretending to be
       # configuration.
+      # Federation token store (upstream IdP tokens per session) — memory by
+      # default, which DEPLOYMENT_MODE=multi refuses once the standalone's own
+      # memory modules declare replica-unsafe state (auth.provider#455/#456).
+      # The Redis adapter encrypts every envelope (auth.provider#450) and needs
+      # its own 32-byte key; this one is for the disposable E2E rig only, like
+      # SESSION_SECRET above. Both lines are ignored by a provider that
+      # predates #455/#456, so the compose can carry them ahead of that change.
+      - FEDERATION_TOKEN_STORE_TYPE=redis
+      - REDIS_FEDERATION_TOKEN_STORE_ENCRYPTION_KEY=zeJFqmOncR4DvzI12bGZq4sIGkOKGHuD/ipQ8QZG7F4=
 
       # ---- Repositories --------------------------------------------------
       # The template defaults the user repository to "http", which needs an
