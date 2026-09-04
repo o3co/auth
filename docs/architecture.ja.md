@@ -46,7 +46,7 @@ HTTP コンポーネントはすべて liveness probe として `GET /_healthche
 
 ## 認証フロー
 
-1. クライアントが `auth.provider` で認証（セッションログイン、OAuth 認可コード、DID）
+1. クライアントが `auth.provider` で認証（セッションログイン — ローカルパスワード、パスキー、Google / GitHub フェデレーション — または PKCE 付き OAuth 認可コードフロー。マシンクライアントは client credentials か device grant）
 2. `auth.provider` が JWT アクセストークンを発行（+ オプションでリフレッシュトークン）
 3. クライアントが `Authorization: Bearer <token>` ヘッダー付きで `auth.proxy` にリクエスト送信
 4. `auth.proxy` がイントロスペクション（キャッシュ付き）でトークンを検証し、ダウンストリームに転送

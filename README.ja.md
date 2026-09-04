@@ -17,7 +17,7 @@
 
 ### auth.provider
 
-DID (分散型識別子) 認証対応の OAuth 2.0 プロバイダー。従来のログインフローでも DID ベースの暗号証明でも JWT を発行可能。プラグイン可能な `DidDocumentResolver` インターフェースで任意の DID method (`did:web`, `did:key`, カスタム) に対応。モジュラー構成 — 必要なモジュールだけを選択（DID のみのデプロイではセッション/フェデレーションをスキップ可能）。JWT 署名は HS256, RS256, ES256, EdDSA に対応、非対称アルゴリズムでは JWKS エンドポイントを自動公開。
+OAuth 2.0 / OIDC プロバイダー。セッションログイン（ローカルのユーザー名/パスワード、WebAuthn パスキー、Google / GitHub フェデレーション）または PKCE 付き認可コードフローから JWT を発行。マシン間・委譲アクセスは client credentials、device authorization grant (RFC 8628)、token exchange (RFC 8693) で、送信者拘束トークンは DPoP (RFC 9449) と mTLS 拘束トークン (RFC 8705) で対応。introspection、revocation、RP-initiated / back-channel logout を備える。モジュラー構成 — 必要なモジュールだけを選択。JWT 署名は EdDSA（既定）, ES256, RS256, HS256 に対応、非対称アルゴリズムでは JWKS エンドポイントを公開。
 
 ### auth.proxy（オプション）
 

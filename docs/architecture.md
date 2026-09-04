@@ -46,7 +46,7 @@ Every HTTP component serves `GET /_healthcheck` as its liveness probe. It always
 
 ## Auth Flow
 
-1. Client authenticates via `auth.provider` (session login, OAuth authorization code, DID)
+1. Client authenticates via `auth.provider` (session login — local password, passkeys or Google / GitHub federation — or the OAuth authorization code flow with PKCE; machine clients use client credentials or the device grant)
 2. `auth.provider` issues JWT access token (+ optional refresh token)
 3. Client sends requests with `Authorization: Bearer <token>` to `auth.proxy`
 4. `auth.proxy` validates token via introspection (cached) and forwards to downstream
