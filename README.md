@@ -17,7 +17,7 @@ A complete authentication + authorization stack that works out of the box. Each 
 
 ### auth.provider
 
-OAuth 2.0 provider with DID (Decentralized Identifier) authentication. Issue JWTs from traditional login flows or DID-based cryptographic proof. Pluggable `DidDocumentResolver` interface supports any DID method (`did:web`, `did:key`, custom). Modular composition — use only the modules you need (DID-only deployments skip session/federation entirely). JWT signing supports HS256, RS256, ES256, EdDSA with JWKS endpoint for asymmetric algorithms.
+OAuth 2.0 / OIDC provider. Issues JWTs from session login (local username/password, WebAuthn passkeys, Google / GitHub federation) or the authorization code flow with PKCE; machine and delegated access via client credentials, the device authorization grant (RFC 8628) and token exchange (RFC 8693); sender-constrained tokens via DPoP (RFC 9449) and mTLS-bound tokens (RFC 8705); introspection, revocation, RP-initiated and back-channel logout. Modular composition — use only the modules you need. JWT signing supports EdDSA (default), ES256, RS256 and HS256, with a JWKS endpoint for the asymmetric algorithms.
 
 ### auth.proxy (optional)
 
