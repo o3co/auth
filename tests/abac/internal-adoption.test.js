@@ -24,8 +24,9 @@ const sessionGrant = async (cookie) => {
 	return { status: res.status, body: await res.json() };
 };
 
-// Only malformed/expiry/proof negatives are hand-signed. Successful service
-// calls below use a real login and the provider's code or session grant.
+// Only expiry/proof negatives are hand-signed. The expiry case first warms
+// the cache with its short-lived token; the normal allow/deny service calls
+// use a real login and the provider's code or session grant.
 const negativeToken = (claims) => jwt.sign({
 	iss: ISSUER, aud: AUDIENCE, sub: 'user-e2e-1', azp: CLIENT_ID,
 	scope: 'read:project', exp: Math.floor(Date.now() / 1000) + 60, ...claims,
