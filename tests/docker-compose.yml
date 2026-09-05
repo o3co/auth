@@ -112,6 +112,7 @@ services:
       # the gate lets a verified user through, and the negative case proves it
       # stops an unverified one.
       - OAUTH_REQUIRE_EMAIL_VERIFIED=true
+      - OAUTH_GRANTS_SESSION_ENABLED=true
       # Public clients are forced onto S256 by the provider regardless; pinning
       # it globally means a future confidential client in this suite cannot
       # quietly fall back to `plain`.
@@ -179,6 +180,47 @@ services:
       # probes the spelling the architecture doc records.
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_healthcheck"]
       interval: 3s
+      timeout: 5s
+      retries: 10
+
+  protected-api:
+    image: node:24-alpine
+    command: ["node", "/fixture/protected-api.mjs"]
+    volumes:
+      - ./fixtures:/fixture:ro
+    environment:
+      - VERIFIER_URL=http://policy-verifier:3000
+    ports:
+      - "3096:3000"
+    depends_on:
+      policy-verifier:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  protected-proxy:
+    build:
+      context: ../repos/auth.proxy
+      dockerfile: ../../tests/dockerfiles/proxy.Dockerfile
+      target: runtime
+      secrets:
+        - npmrc
+    ports:
+      - "3095:80"
+    environment:
+      - AUTH_MODE=validation
+      - INTROSPECT_URL=http://provider:3000/oauth/introspect
+      - INTROSPECT_CACHE_TTL_SEC=5
+      - UPSTREAM_BASEURL=http://protected-api:3000
+    depends_on:
+      protected-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/_healthcheck"]
+      interval: 2s
       timeout: 5s
       retries: 10
 
