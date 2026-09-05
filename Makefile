@@ -1,5 +1,5 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
-PROVIDER_REV := c1a9b09d60c85dcb16c128805b8043fd64002671
+PROVIDER_REV := 8f97fa664343b02bbcb1237f3e833f5add633701
 PROXY_REV := 7db91c2aeacc1549368491a9fe8affb5f42bbf18
 VERIFIER_REV := a7465a2c7402743db2af03ce603a2d9dc085696f
 
@@ -10,7 +10,7 @@ define clone_or_pull
 		echo "==> Cloning $(2) -> $(1)"; \
 		git clone "$(2)" "$(1)"; \
 	fi
-	git -C "$(1)" fetch origin "$(3)"
+	git -C "$(1)" fetch origin
 	git -C "$(1)" checkout --detach "$(3)"
 endef
 
