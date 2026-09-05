@@ -43,6 +43,7 @@ e2e-app:
   allowedGrantTypes:
     - "authorization_code"
     - "refresh_token"
+    - "session"
 
 # A deliberately unmarked client. `/authorize` must refuse it with
 # `unauthorized_client` — this is the negative half of the first-party

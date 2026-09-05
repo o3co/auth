@@ -1,29 +1,27 @@
+# Tested component revisions. Update these deliberately and rerun the full E2E.
+PROVIDER_REV := c1a9b09d60c85dcb16c128805b8043fd64002671
+PROXY_REV := 7db91c2aeacc1549368491a9fe8affb5f42bbf18
+VERIFIER_REV := a7465a2c7402743db2af03ce603a2d9dc085696f
+
 define clone_or_pull
 	@if [ -d "$(1)/.git" ]; then \
-		echo "==> $(1) (already cloned, pulling)"; \
-		git -C "$(1)" pull; \
+		echo "==> $(1) (already cloned)"; \
 	else \
 		echo "==> Cloning $(2) -> $(1)"; \
 		git clone "$(2)" "$(1)"; \
 	fi
+	git -C "$(1)" fetch origin "$(3)"
+	git -C "$(1)" checkout --detach "$(3)"
 endef
 
 .PHONY: setup
 setup:
-	$(call clone_or_pull,repos/auth.provider,git@github.com:o3co/auth.provider.git)
-	$(call clone_or_pull,repos/auth.proxy,git@github.com:o3co/auth.proxy.git)
-	$(call clone_or_pull,repos/auth.policy-verifier,git@github.com:o3co/auth.policy-verifier.git)
+	$(call clone_or_pull,repos/auth.provider,git@github.com:o3co/auth.provider.git,$(PROVIDER_REV))
+	$(call clone_or_pull,repos/auth.proxy,git@github.com:o3co/auth.proxy.git,$(PROXY_REV))
+	$(call clone_or_pull,repos/auth.policy-verifier,git@github.com:o3co/auth.policy-verifier.git,$(VERIFIER_REV))
 
 .PHONY: pull
-pull:
-	@for dir in repos/auth.provider repos/auth.proxy repos/auth.policy-verifier; do \
-		if [ -d "$$dir/.git" ]; then \
-			echo "==> Pulling $$dir"; \
-			git -C "$$dir" pull; \
-		else \
-			echo "==> $$dir not cloned (run 'make setup')"; \
-		fi; \
-	done
+pull: setup
 
 .PHONY: status
 status:
@@ -36,9 +34,9 @@ status:
 
 .PHONY: build
 build: setup
-	cd repos/auth.provider && pnpm install && pnpm run build
-	cd repos/auth.proxy && pnpm install && pnpm run build
-	cd repos/auth.policy-verifier && pnpm install && pnpm run build
+	cd repos/auth.provider && pnpm install --frozen-lockfile && pnpm run build
+	cd repos/auth.proxy && pnpm install --frozen-lockfile && pnpm run build
+	cd repos/auth.policy-verifier && pnpm install --frozen-lockfile && pnpm run build
 
 # One definition of the shared HS256 secret, interpolated into the containers
 # by docker compose and exported to the test processes, which mint their own
@@ -60,8 +58,8 @@ export OAUTH_JWT_AUDIENCE := https://api.e2e.test
 .PHONY: test-e2e
 test-e2e: build
 	docker compose -f tests/docker-compose.yml up -d --build --wait
-	cd tests/token-flow && pnpm install && pnpm vitest run
-	cd tests/abac && pnpm install && pnpm vitest run
+	cd tests/token-flow && pnpm install --frozen-lockfile && pnpm vitest run
+	cd tests/abac && pnpm install --frozen-lockfile && pnpm vitest run
 	docker compose -f tests/docker-compose.yml down
 
 # Container logs for a failed run. A target rather than a bare `docker compose
