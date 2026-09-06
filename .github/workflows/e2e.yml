@@ -7,6 +7,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  provin-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable pnpm via corepack
+        run: |
+          npm install -g corepack --force
+          corepack enable
+          corepack prepare pnpm@10.29.3 --activate
+      - name: Clone dependencies over HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - name: Test pinned Provin source against the candidate auth packages
+        run: make test-provin
+
   test-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -1,5 +1,10 @@
 # Internal adoption baseline
 
+The actual Provin consumer also has a separate
+[compatibility check](../tests/provin/README.md): `make test-provin`. It tests
+the pinned downstream DID extensions and generated composition roots against
+candidate auth packages without publishing a release.
+
 Start with ordinary Bearer access tokens, the provider's real login and PKCE
 authorization-code flow, and signature-verifying policy evaluation. The E2E
 also covers session-grant issuance and an optional validation proxy. Component
