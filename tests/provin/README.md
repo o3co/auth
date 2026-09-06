@@ -2,7 +2,7 @@
 
 `make test-provin` tests actual `provin-line/auth` source pinned in the Makefile
 against the candidate Provider/Verifier revisions used by the Bearer E2E suite.
-It packs the five Provider/Verifier packages plus pinned auth.utils, overriding every matching direct
+It packs the five Provider/Verifier packages, overriding every matching direct
 and transitive dependency. No npm release or image push is needed.
 
 It covers workspace build/typecheck/tests, DID issuance and HTTP policy decisions,
@@ -12,10 +12,6 @@ the generated Provider's valid/tampered DID-signature grant.
 `repos/provin.auth` is disposable: its manifest/lockfile are rewritten and
 `instances/` regenerated. Use a fresh checkout for fresh dependency resolution.
 Do not use this test checkout for application work.
-
-The pinned auth.utils revision does not track a lockfile. Its dependency snapshot
-is kept here as `auth-utils.pnpm-lock.yaml` and installed with
-`--frozen-lockfile`; refresh it deliberately when changing `UTILS_REV`.
 
 The consumer's generated release pins remain unchanged. Deploying the candidate
 fixes requires deliberately using the tested artifacts/revisions and updating
