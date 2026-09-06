@@ -3,7 +3,7 @@ PROVIDER_REV := 8f97fa664343b02bbcb1237f3e833f5add633701
 PROXY_REV := 7db91c2aeacc1549368491a9fe8affb5f42bbf18
 VERIFIER_REV := a7465a2c7402743db2af03ce603a2d9dc085696f
 UTILS_REV := 88b7f0585b1df438931d200e053ad918ff0958fb
-PROVIN_REV := 662e4b79a88905d64066df2db7ea3c8c88c020bf
+PROVIN_REV := f12fb8f24bbd833a7a14dfbdd8e5274e395120f6
 
 define clone_or_pull
 	@if [ -d "$(1)/.git" ]; then \
@@ -34,7 +34,9 @@ setup-provin:
 	$(call clone_or_pull,repos/provin.auth,git@github.com:provin-line/auth.git,$(PROVIN_REV))
 
 test-provin: setup-provin
-	cd repos/auth.utils && pnpm install && pnpm run build
+	# The pinned utils revision has no tracked lockfile; keep its test lock here.
+	cp tests/provin/auth-utils.pnpm-lock.yaml repos/auth.utils/pnpm-lock.yaml
+	cd repos/auth.utils && pnpm install --frozen-lockfile && pnpm run build
 	cd repos/auth.provider && pnpm install --frozen-lockfile && pnpm --filter @o3co/auth-provider-oauth... run build
 	cd repos/auth.policy-verifier && pnpm install --frozen-lockfile && pnpm --filter @o3co/auth.policy-verifier.server... --filter @o3co/auth.policy-verifier.builtins... run build
 	node tests/provin/run.mjs
