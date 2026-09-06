@@ -20,13 +20,10 @@ function pnpm(cwd, ...args) {
 
 // Pack the real build output. pnpm pack rewrites workspace:* dependencies;
 // overrides then replace every upstream dependency, including transitive ones.
-// Directories are relative to the cloned repo root, because auth.utils is a
-// single-package repo rather than a workspace. It ships as its own npm package
-// that provider/verifier depend on and the consumer imports directly, so an
-// override list without it would test candidate components against a released
-// utils — the one family package the pins would not cover.
+// Directories are relative to the cloned repo root. @o3co/auth.utils is no
+// longer packed: Provin's scaffolds stopped emitting it (provin-line/auth#22),
+// which was the package's last consumer across the family.
 const packages = [
-  ["auth.utils", "."],
   ["auth.provider", "packages/core"],
   ["auth.provider", "packages/oauth"],
   ["auth.policy-verifier", "packages/core"],
