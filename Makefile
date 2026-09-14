@@ -2,7 +2,6 @@
 PROVIDER_REV := 4c44adfbf8e780863c1d7c22bf0129a86bdc62d9
 PROXY_REV := 9fc0dab66bcbb74c189c2b17812cf50851b9d2f2
 VERIFIER_REV := cc982b795efc8807712b3db9ef596182a3bfd815
-PROVIN_REV := abb14d9ff971e88261447dd255863301f22c3a7c
 
 define clone_or_pull
 	@if [ -d "$(1)/.git" ]; then \
@@ -23,18 +22,6 @@ setup:
 
 .PHONY: pull
 pull: setup
-
-# Exercise the actual downstream DID grant and policy extensions before release.
-.PHONY: setup-provin test-provin
-setup-provin:
-	$(call clone_or_pull,repos/auth.provider,git@github.com:o3co/auth.provider.git,$(PROVIDER_REV))
-	$(call clone_or_pull,repos/auth.policy-verifier,git@github.com:o3co/auth.policy-verifier.git,$(VERIFIER_REV))
-	$(call clone_or_pull,repos/provin.auth,git@github.com:provin-line/auth.git,$(PROVIN_REV))
-
-test-provin: setup-provin
-	cd repos/auth.provider && pnpm install --frozen-lockfile && pnpm --filter @o3co/auth-provider-oauth... run build
-	cd repos/auth.policy-verifier && pnpm install --frozen-lockfile && pnpm --filter @o3co/auth.policy-verifier.server... --filter @o3co/auth.policy-verifier.builtins... run build
-	node tests/provin/run.mjs
 
 .PHONY: status
 status:
