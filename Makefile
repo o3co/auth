@@ -1,7 +1,7 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
 PROVIDER_REV := 1b3f91d876d7d9eba1e03075d75ab34a360287d5
 PROXY_REV := 3e4263e3882c7db3c8fed6e49cc1b2a86ea55a2a
-VERIFIER_REV := 17c711969673955168be9553068cacd8606b53f9
+VERIFIER_REV := 478a2772f34b06b9ec49c5501b5ea26c511856e6
 
 define clone_or_pull
 	@if [ -d "$(1)/.git" ]; then \
