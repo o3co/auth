@@ -20,13 +20,15 @@ RUN printf 'packages:\n  - "packages/*"\n  - "templates/*"\n' > pnpm-workspace.y
 # Hand-maintained: one line per packages/* in auth.provider, here AND in the
 # runtime stage below. A package missing from this list is absent from the
 # workspace pnpm installs, so its build finds no node_modules (#432 added
-# device-grant and this file did not follow).
+# device-grant and this file did not follow; auth.provider#593 added
+# federation-grants, a template dependency, and the install failed outright).
 COPY packages/core/package.json packages/core/package.json
 COPY packages/device-grant/package.json packages/device-grant/package.json
 COPY packages/dpop/package.json packages/dpop/package.json
 COPY packages/federation-apple/package.json packages/federation-apple/package.json
 COPY packages/federation-github/package.json packages/federation-github/package.json
 COPY packages/federation-google/package.json packages/federation-google/package.json
+COPY packages/federation-grants/package.json packages/federation-grants/package.json
 COPY packages/federation-oidc/package.json packages/federation-oidc/package.json
 COPY packages/foundation/package.json packages/foundation/package.json
 COPY packages/mtls/package.json packages/mtls/package.json
@@ -62,6 +64,7 @@ COPY --from=deps /home/node/packages/dpop/package.json packages/dpop/package.jso
 COPY --from=deps /home/node/packages/federation-apple/package.json packages/federation-apple/package.json
 COPY --from=deps /home/node/packages/federation-github/package.json packages/federation-github/package.json
 COPY --from=deps /home/node/packages/federation-google/package.json packages/federation-google/package.json
+COPY --from=deps /home/node/packages/federation-grants/package.json packages/federation-grants/package.json
 COPY --from=deps /home/node/packages/federation-oidc/package.json packages/federation-oidc/package.json
 COPY --from=deps /home/node/packages/foundation/package.json packages/foundation/package.json
 COPY --from=deps /home/node/packages/mtls/package.json packages/mtls/package.json
@@ -85,6 +88,7 @@ COPY --from=builder /home/node/packages/dpop/dist/ packages/dpop/dist/
 COPY --from=builder /home/node/packages/federation-apple/dist/ packages/federation-apple/dist/
 COPY --from=builder /home/node/packages/federation-github/dist/ packages/federation-github/dist/
 COPY --from=builder /home/node/packages/federation-google/dist/ packages/federation-google/dist/
+COPY --from=builder /home/node/packages/federation-grants/dist/ packages/federation-grants/dist/
 COPY --from=builder /home/node/packages/federation-oidc/dist/ packages/federation-oidc/dist/
 COPY --from=builder /home/node/packages/foundation/dist/ packages/foundation/dist/
 COPY --from=builder /home/node/packages/mtls/dist/ packages/mtls/dist/
