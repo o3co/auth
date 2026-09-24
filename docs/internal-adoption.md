@@ -55,7 +55,7 @@ boundary is implemented. Injection mode's external-credential exchange (RFC
 7523 jwt-bearer) is not exercised: the standalone provider wires no
 `assertionVerifier`, so its issuer registry cannot be configured from this
 rig. The exchange, actual Go interceptors, multiple provider or proxy replicas
-and asymmetric JWKS rotation need their own
-deployment-specific smoke tests before enabling those paths. Passing this
+and asymmetric JWKS rotation need their own deployment-specific smoke tests
+before enabling those paths. Passing this
 baseline supports internal evaluation of the described topology; it is not a
 release-candidate or production-readiness certification.
