@@ -54,7 +54,7 @@ describe('Validation mode with client credentials (CLIENT_ID / CLIENT_SECRET)', 
 		const res = await send(CREDENTIALED_PROXY, inAudience);
 		expect(res.status).toBe(200);
 		// The echo upstream's body: forwarded, with the caller's token intact.
-		expect(res.body.authorization).toBe(`Bearer ${inAudience}`);
+		expect(res.body.authorization).toEqual([`Bearer ${inAudience}`]);
 	});
 
 	it('refuses a valid token for an audience the client does not admit', async () => {

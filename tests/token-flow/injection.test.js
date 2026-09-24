@@ -17,6 +17,7 @@
  * provider; this is the first place the two meet.
  */
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AUDIENCE, ISSUER, PROVIDER_URL, decodeJwt, introspect, login } from '../shared/oauthFlow.js';
@@ -34,11 +35,12 @@ const compose = fileURLToPath(new URL('../docker-compose.yml', import.meta.url))
  * response headers; on a forwarded request the body is the echo upstream's
  * report of what it received.
  */
-async function send(origin, { cookie, authorization, path = '/resource' } = {}) {
+async function send(origin, { cookie, authorization, probe, path = '/resource' } = {}) {
 	const res = await fetch(`${origin}${path}`, {
 		headers: {
 			...(cookie !== undefined ? { cookie } : {}),
 			...(authorization !== undefined ? { authorization } : {}),
+			...(probe !== undefined ? { 'x-e2e-probe': probe } : {}),
 		},
 	});
 	return { status: res.status, headers: res.headers, body: await res.json().catch(() => null) };
@@ -46,6 +48,19 @@ async function send(origin, { cookie, authorization, path = '/resource' } = {}) 
 
 /** True when the body is the echo upstream's, i.e. the request was forwarded. */
 const reachedUpstream = (body) => body !== null && typeof body === 'object' && 'url' in body;
+
+/** Whether the echo upstream received a request marked with `probe` (asked through a pass-through). */
+async function seenUpstream(probe) {
+	const res = await send(INJECTION_PROXY, { path: `/_seen/${probe}` });
+	expect(res.status).toBe(200);
+	return res.body.seen;
+}
+
+/** The one `Authorization` the upstream received — failing if it got none, or more than one. */
+const onlyAuthorization = (body) => {
+	expect(body.authorization).toHaveLength(1);
+	return body.authorization[0];
+};
 
 const bearerOf = (authorization) => {
 	expect(authorization).toMatch(/^Bearer \S+$/);
@@ -74,7 +89,7 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		expect(reachedUpstream(res.body)).toBe(true);
 		expect(res.body.url).toBe('/resource?x=1');
 
-		const token = bearerOf(res.body.authorization);
+		const token = bearerOf(onlyAuthorization(res.body));
 		const { header, payload } = decodeJwt(token);
 		// An RFC 9068 access token from the provider, not something the proxy
 		// made up or passed through.
@@ -102,7 +117,7 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 	it("replaces a client's own Authorization when the session produced a token", async () => {
 		const res = await send(INJECTION_PROXY, { cookie, authorization: 'Bearer client-supplied' });
 		expect(res.status).toBe(200);
-		const token = bearerOf(res.body.authorization);
+		const token = bearerOf(onlyAuthorization(res.body));
 		expect(token).not.toBe('client-supplied');
 		expect(decodeJwt(token).payload.azp).toBe(BFF_CLIENT_ID);
 	});
@@ -115,7 +130,7 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		const second = await send(INJECTION_PROXY, { cookie });
 		expect(first.status).toBe(200);
 		expect(second.status).toBe(200);
-		expect(second.body.authorization).toBe(first.body.authorization);
+		expect(second.body.authorization).toEqual(first.body.authorization);
 	});
 
 	it('forwards a request without the session cookie unchanged, with no Bearer', async () => {
@@ -123,6 +138,7 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		expect(res.status).toBe(200);
 		expect(reachedUpstream(res.body)).toBe(true);
 		expect(res.body.authorization).toBeNull();
+		expect(res.body.cookie).toEqual(['unrelated=1']);
 	});
 
 	it("passes a client's own Authorization through when there is no session cookie (strip off)", async () => {
@@ -130,7 +146,7 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		// request as-is — which is why the upstream must verify what it gets.
 		const res = await send(INJECTION_PROXY, { authorization: 'Bearer client-supplied' });
 		expect(res.status).toBe(200);
-		expect(res.body.authorization).toBe('Bearer client-supplied');
+		expect(res.body.authorization).toEqual(['Bearer client-supplied']);
 	});
 
 	it('answers 401 session_required for a signed-out session, without reaching the upstream', async () => {
@@ -140,9 +156,11 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		expect(session.status).toBe(200);
 		await logout(session.cookie);
 
-		const res = await send(INJECTION_PROXY, { cookie: session.cookie });
+		const probe = randomUUID();
+		const res = await send(INJECTION_PROXY, { cookie: session.cookie, probe });
 		expect(res.status).toBe(401);
 		expect(reachedUpstream(res.body)).toBe(false);
+		expect(await seenUpstream(probe)).toBe(false);
 		expect(res.body.error).toBe('session_required');
 		expect(typeof res.body.error_description).toBe('string');
 		// Injection mode sends no challenge on any path (README, "Validation
@@ -176,9 +194,11 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		).trim();
 		expect(deleted).toBe('1');
 
-		const res = await send(INJECTION_PROXY, { cookie: session.cookie });
+		const probe = randomUUID();
+		const res = await send(INJECTION_PROXY, { cookie: session.cookie, probe });
 		expect(res.status).toBe(401);
 		expect(reachedUpstream(res.body)).toBe(false);
+		expect(await seenUpstream(probe)).toBe(false);
 		expect(res.body.error).toBe('session_required');
 		expect(res.headers.get('www-authenticate')).toBeNull();
 	}, 30_000);
@@ -206,7 +226,7 @@ describe('Injection mode with INJECTION_STRIP_INBOUND_AUTHORIZATION=true', () =>
 	it('still injects the provider-issued Bearer for a valid session cookie', async () => {
 		const res = await send(STRIP_PROXY, { cookie, authorization: 'Bearer client-supplied' });
 		expect(res.status).toBe(200);
-		const { payload } = decodeJwt(bearerOf(res.body.authorization));
+		const { payload } = decodeJwt(bearerOf(onlyAuthorization(res.body)));
 		expect(payload.sub).toBe('user-e2e-1');
 		expect(payload.azp).toBe(BFF_CLIENT_ID);
 		expect(payload.aud).toBe(AUDIENCE);
