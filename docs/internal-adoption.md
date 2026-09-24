@@ -18,6 +18,18 @@ The disposable compose fixture proves:
   while the separate browser session is retained.
 - Local logout invalidates the issued token; the validation proxy refuses its
   previously warm entry after the configured cache TTL.
+- An injection-mode proxy exchanges the browser session cookie at the
+  provider's `session` grant and forwards a provider-issued Bearer for that
+  user; without the cookie it mints nothing, a signed-out or untracked session
+  is `401 session_required`, and `stripInboundAuthorization` removes a client's
+  own header (`tests/token-flow/injection.test.js`).
+- A validation proxy authenticating to introspection with client credentials
+  forwards tokens for an audience its client is registered for, refuses a
+  valid token for any other audience, and answers `502` when its own
+  credentials are refused (`tests/token-flow/validation-client-credentials.test.js`).
+
+`tests/fixtures/echo-upstream.mjs`, the upstream behind those proxies, echoes
+the headers it received and verifies nothing.
 
 `tests/fixtures/protected-api.mjs` is test scaffolding with counters to prove the
 order of enforcement and handler execution. Its counters and public health
@@ -39,8 +51,11 @@ verification observes expiry, not live session deletion.
 
 This baseline does not enable end-to-end DPoP/mTLS. Such tokens are refused by
 the default Bearer-only consumers until a trusted possession-verification
-boundary is implemented. Injection-mode deployment, actual Go interceptors,
-multiple provider replicas and asymmetric JWKS rotation need their own
+boundary is implemented. Injection mode's external-credential exchange (RFC
+7523 jwt-bearer) is not exercised: the standalone provider wires no
+`assertionVerifier`, so its issuer registry cannot be configured from this
+rig. The exchange, actual Go interceptors, multiple provider or proxy replicas
+and asymmetric JWKS rotation need their own
 deployment-specific smoke tests before enabling those paths. Passing this
 baseline supports internal evaluation of the described topology; it is not a
 release-candidate or production-readiness certification.
