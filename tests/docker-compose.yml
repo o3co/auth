@@ -304,6 +304,65 @@ services:
       timeout: 5s
       retries: 10
 
+  # Validation mode authenticating to introspection as a confidential client,
+  # which switches on the provider's audience pin.
+  credentialed-proxy:
+    build:
+      context: ../repos/auth.proxy
+      dockerfile: ../../tests/dockerfiles/proxy.Dockerfile
+      target: runtime
+      secrets:
+        - npmrc
+    ports:
+      - "3092:80"
+    environment:
+      - AUTH_MODE=validation
+      - INTROSPECT_URL=http://provider:3000/oauth/introspect
+      # Registered as `e2e-resource-server` in tests/provider/clients.yaml,
+      # which holds the second copy of this secret (volume-mounted, so
+      # interpolation cannot share one definition between them).
+      - CLIENT_ID=e2e-resource-server
+      - CLIENT_SECRET=AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0=
+      - UPSTREAM_BASEURL=http://echo-upstream:3000
+    depends_on:
+      provider:
+        condition: service_healthy
+      echo-upstream:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/_healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # The same client with a wrong secret: the provider refuses the proxy's own
+  # credentials, which auth.proxy v0.7.0 answers 502, not 401 (#95 F7).
+  misconfigured-proxy:
+    build:
+      context: ../repos/auth.proxy
+      dockerfile: ../../tests/dockerfiles/proxy.Dockerfile
+      target: runtime
+      secrets:
+        - npmrc
+    ports:
+      - "3091:80"
+    environment:
+      - AUTH_MODE=validation
+      - INTROSPECT_URL=http://provider:3000/oauth/introspect
+      - CLIENT_ID=e2e-resource-server
+      - CLIENT_SECRET=not-the-registered-secret
+      - UPSTREAM_BASEURL=http://echo-upstream:3000
+    depends_on:
+      provider:
+        condition: service_healthy
+      echo-upstream:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/_healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
 secrets:
   npmrc:
     file: ~/.npmrc
