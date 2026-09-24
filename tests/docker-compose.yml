@@ -224,6 +224,86 @@ services:
       timeout: 5s
       retries: 10
 
+  # ---- auth.proxy against the real provider, beyond uncredentialed validation
+  # The upstream for every service below: it echoes the headers it received,
+  # so the suites assert on what the proxy actually forwarded.
+  echo-upstream:
+    image: node:24-alpine
+    command: ["node", "/fixture/echo-upstream.mjs"]
+    volumes:
+      - ./fixtures:/fixture:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # Injection mode: the browser's session cookie is exchanged at the
+  # provider's `session` grant and injected upstream as a Bearer.
+  injection-proxy:
+    build:
+      context: ../repos/auth.proxy
+      dockerfile: ../../tests/dockerfiles/proxy.Dockerfile
+      target: runtime
+      secrets:
+        - npmrc
+    ports:
+      - "3094:80"
+    environment:
+      - AUTH_MODE=injection
+      # An origin, not a URL: the proxy appends /oauth/token itself.
+      - INJECTION_PROVIDER_ORIGIN=http://provider:3000
+      # Registered in tests/provider/clients.yaml for the `session` grant.
+      - INJECTION_CLIENT_ID=e2e-bff
+      - INJECTION_SCOPE=read:project
+      # The provider's SESSION_NAME above; the proxy defaults to connect.sid.
+      - INJECTION_SESSION_COOKIE_NAME=auth.session
+      # The default, spelled out: the sibling service below turns it on, and
+      # the suite asserts the pass-through this one keeps.
+      - INJECTION_STRIP_INBOUND_AUTHORIZATION=false
+      - UPSTREAM_BASEURL=http://echo-upstream:3000
+    depends_on:
+      provider:
+        condition: service_healthy
+      echo-upstream:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/_healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # The same, with a client's own Authorization dropped on every request the
+  # proxy did not mint a token for. A separate service rather than a toggle,
+  # so each behaviour is asserted against the configuration that produces it.
+  injection-strip-proxy:
+    build:
+      context: ../repos/auth.proxy
+      dockerfile: ../../tests/dockerfiles/proxy.Dockerfile
+      target: runtime
+      secrets:
+        - npmrc
+    ports:
+      - "3093:80"
+    environment:
+      - AUTH_MODE=injection
+      - INJECTION_PROVIDER_ORIGIN=http://provider:3000
+      - INJECTION_CLIENT_ID=e2e-bff
+      - INJECTION_SCOPE=read:project
+      - INJECTION_SESSION_COOKIE_NAME=auth.session
+      - INJECTION_STRIP_INBOUND_AUTHORIZATION=true
+      - UPSTREAM_BASEURL=http://echo-upstream:3000
+    depends_on:
+      provider:
+        condition: service_healthy
+      echo-upstream:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/_healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
 secrets:
   npmrc:
     file: ~/.npmrc
