@@ -88,6 +88,10 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		expect(res.status).toBe(200);
 		expect(reachedUpstream(res.body)).toBe(true);
 		expect(res.body.url).toBe('/resource?x=1');
+		// The Cookie header goes upstream as sent, session cookie included:
+		// auth.proxy narrows only its provider call to the session cookie
+		// (README "Cookie forwarding"); stripping cookies is not its contract.
+		expect(res.body.cookie).toEqual([cookie]);
 
 		const token = bearerOf(onlyAuthorization(res.body));
 		const { header, payload } = decodeJwt(token);
@@ -179,7 +183,7 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 		// this cookie and the next request would never reach the provider.
 		const direct = await fetch(`${PROVIDER_URL}/oauth/token`, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json', cookie: session.cookie },
+			headers: { 'content-type': 'application/json', cookie: session.cookie, origin: PROVIDER_URL },
 			body: JSON.stringify({ grant_type: 'session', client_id: BFF_CLIENT_ID, scope: BFF_SCOPE }),
 		});
 		expect(direct.status).toBe(200);
@@ -226,6 +230,7 @@ describe('Injection mode with INJECTION_STRIP_INBOUND_AUTHORIZATION=true', () =>
 	it('still injects the provider-issued Bearer for a valid session cookie', async () => {
 		const res = await send(STRIP_PROXY, { cookie, authorization: 'Bearer client-supplied' });
 		expect(res.status).toBe(200);
+		expect(res.body.cookie).toEqual([cookie]);
 		const { payload } = decodeJwt(bearerOf(onlyAuthorization(res.body)));
 		expect(payload.sub).toBe('user-e2e-1');
 		expect(payload.azp).toBe(BFF_CLIENT_ID);
