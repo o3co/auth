@@ -81,3 +81,32 @@ e2e-bff:
     - "https://api.e2e.test"
   allowedGrantTypes:
     - "session"
+
+# The confidential client auth.proxy's credentialed validation service
+# authenticates to `POST /oauth/introspect` as (CLIENT_ID / CLIENT_SECRET in
+# tests/docker-compose.yml). Introspection refuses public clients (RFC 7662
+# §2.1), hence `client_secret_basic`.
+#
+# With a client identified, the provider pins the introspected token's
+# audience to `allowedAudiences ∪ {clientId}` (auth.provider v0.12.0+,
+# packages/oauth/src/routes.mts): a token for any other audience is
+# `active: false`. Registering the E2E audience here is what makes the
+# resource server's own tokens introspectable; the suite also presents a
+# provider-issued token for another audience to prove the pin holds.
+#
+# The secret is plain text on purpose — the repository compares a literal
+# when the stored value is not a bcrypt hash — and it is the one deliberate
+# second copy of the proxy's CLIENT_SECRET, for the same reason as the
+# audience above: this file is volume-mounted, out of interpolation's reach.
+# It carries `+`, `/` and `=` deliberately, so the RFC 6749 §2.3.1 form
+# encoding of the Basic header is exercised end to end. Disposable rig only.
+#
+# `allowedGrantTypes: []` denies every grant: it only introspects. An ABSENT
+# list would mean "no restriction" (auth.provider packages/core/src/
+# repositories/types.mts), so the empty list is written out.
+e2e-resource-server:
+  tokenEndpointAuthMethod: "client_secret_basic"
+  clientSecret: "AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0="
+  allowedAudiences:
+    - "https://api.e2e.test"
+  allowedGrantTypes: []
