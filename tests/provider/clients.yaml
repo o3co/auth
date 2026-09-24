@@ -60,3 +60,24 @@ e2e-third-party:
     - "https://api.e2e.test"
   allowedGrantTypes:
     - "authorization_code"
+
+# The client auth.proxy's injection-mode services present on the `session`
+# grant (INJECTION_CLIENT_ID in tests/docker-compose.yml). A public client:
+# the proxy sends `client_id` in the body and the browser's session cookie,
+# never a secret (auth.proxy src/modes/injection/session-grant-client.mts).
+#
+# The session grant stamps `aud` from the FIRST `allowedAudiences` entry,
+# falling back to the client id (auth.provider packages/oauth/src/grants/
+# session.mts), so this is what makes an injected token carry the resource
+# audience the E2E pins. `firstParty` is not set: it is read only at
+# `/authorize`, which this client never calls. It is its own registration,
+# rather than a reuse of `e2e-app`, so the suites can tell from `azp` that
+# the token the upstream received was minted for the proxy's client.
+e2e-bff:
+  tokenEndpointAuthMethod: "none"
+  allowedScopes:
+    - "read:project"
+  allowedAudiences:
+    - "https://api.e2e.test"
+  allowedGrantTypes:
+    - "session"
