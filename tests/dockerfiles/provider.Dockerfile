@@ -19,10 +19,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # `overrides` and `onlyBuiltDependencies` the provider's lockfile was resolved
 # with. A workspace file without them had pnpm re-resolve the lockfile — its
 # security overrides dropped, bcrypt's install script skipped — so the image was
-# not built from the dependency set the provider ships. The file also lists
-# create-app and tools/*, which are not copied: they are just not workspace
-# projects here. Both installs are --frozen-lockfile, which accepts that and
-# refuses any other departure from the lockfile.
+# not built from the dependency set the provider ships. The file also matches
+# projects the image does not copy (create-app and tools/* today): they are
+# just not workspace projects here. Both installs are --frozen-lockfile, which
+# accepts that and refuses any other departure from the lockfile. If the
+# provider adds `patchedDependencies` (a patches/ directory) or a
+# .pnpmfile.cjs, the frozen install fails, loudly, until this file copies them
+# too; it uses neither today.
 
 # Hand-maintained: one line per packages/* in auth.provider, here AND in the
 # runtime stage below. A package missing from this list is absent from the

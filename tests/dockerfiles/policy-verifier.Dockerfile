@@ -17,9 +17,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # The verifier's own pnpm-workspace.yaml, not one written here: it carries the
 # security `overrides` the verifier's lockfile was resolved with, which a
 # workspace file of our own dropped when pnpm re-resolved the lockfile. The file
-# also lists create-app and tests/*, which are not copied: they are just not
-# workspace projects here. Both installs are --frozen-lockfile, which accepts
-# that and refuses any other departure from the lockfile.
+# also matches projects the image does not copy (create-app, tests/*, and the
+# packages it does not build — packages/cedar and packages/cedar-wasm today):
+# they are just not workspace projects here. Both installs are
+# --frozen-lockfile, which accepts that and refuses any other departure from
+# the lockfile. If the verifier adds `patchedDependencies` (a patches/
+# directory) or a .pnpmfile.cjs, the frozen install fails, loudly, until this
+# file copies them too; it uses neither today.
 COPY packages/core/package.json packages/core/package.json
 COPY packages/builtins/package.json packages/builtins/package.json
 COPY packages/server/package.json packages/server/package.json
