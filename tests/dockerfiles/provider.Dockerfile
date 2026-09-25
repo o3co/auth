@@ -14,9 +14,16 @@ WORKDIR /home/node
 #############################################
 FROM node-base AS deps
 
-COPY package.json pnpm-lock.yaml ./
-# Override workspace config to exclude create-app (not needed for runtime)
-RUN printf 'packages:\n  - "packages/*"\n  - "templates/*"\n' > pnpm-workspace.yaml
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The provider's own pnpm-workspace.yaml, not one written here: it carries the
+# `overrides` and `onlyBuiltDependencies` the provider's lockfile was resolved
+# with. A workspace file without them had pnpm re-resolve the lockfile — its
+# security overrides dropped, bcrypt's install script skipped — so the image was
+# not built from the dependency set the provider ships. The file also lists
+# create-app and tools/*, which are not copied: they are just not workspace
+# projects here. Both installs are --frozen-lockfile, which accepts that and
+# refuses any other departure from the lockfile.
+
 # Hand-maintained: one line per packages/* in auth.provider, here AND in the
 # runtime stage below. A package missing from this list is absent from the
 # workspace pnpm installs, so its build finds no node_modules (#432 added
@@ -40,7 +47,7 @@ COPY packages/webauthn/package.json packages/webauthn/package.json
 COPY templates/standalone/package.json templates/standalone/package.json
 
 RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc \
-    pnpm install
+    pnpm install --frozen-lockfile
 
 #############################################
 FROM deps AS builder
@@ -79,7 +86,7 @@ COPY --from=deps /home/node/templates/standalone/package.json templates/standalo
 # devDependencies, and ESM resolution starts from each package's real dir,
 # so a prod-only install leaves those links missing (ERR_MODULE_NOT_FOUND).
 RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc \
-    pnpm install --prod=false
+    pnpm install --prod=false --frozen-lockfile
 
 COPY --from=builder /home/node/packages/core/dist/ packages/core/dist/
 COPY --from=builder /home/node/packages/core/config/ packages/core/config/

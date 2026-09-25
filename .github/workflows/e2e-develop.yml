@@ -9,7 +9,10 @@ name: e2e-develop
 #
 # `schedule` runs on the default branch (develop), so the suite is develop's
 # tests/ as well. GitHub disables a public repository's scheduled workflows
-# after 60 days without activity; re-enable this one from the Actions tab.
+# after 60 days without activity, and this repository has gone longer than
+# that between commits. So moving a pin starts with checking that this
+# workflow is still enabled (README, "E2E revisions"); turn it back on with
+# `gh workflow enable e2e-develop.yml -R o3co/auth`.
 run-name: e2e against every sibling's develop (nightly, not the release gate)
 
 on:

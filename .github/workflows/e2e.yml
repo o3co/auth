@@ -2,10 +2,10 @@ name: e2e
 
 # The release gate is this workflow's pinned run: push, pull_request, and a
 # workflow_dispatch left at its defaults test every sibling at the revision
-# pinned in the Makefile. A dispatch that overrides a revision tests something
-# else and is not the gate — its run name says so, and the job summary names
-# every revision it tested. The nightly run against every sibling's develop is
-# e2e-develop.yml, which calls this workflow.
+# pinned in the Makefile. A run that overrides a revision tests something else
+# and is not the gate — its run name and its check name say so, and the job
+# summary names every revision it tested. The nightly run against every
+# sibling's develop is e2e-develop.yml, which calls this workflow.
 run-name: >-
   ${{
     (inputs.provider_rev || inputs.proxy_rev || inputs.verifier_rev)
@@ -19,9 +19,10 @@ on:
     branches: [develop]
   pull_request:
   # Each input takes a SHA, a tag, or origin/<branch>: the Makefile runs
-  # `git fetch origin` and then `git checkout --detach <rev>`. Write a branch as
-  # origin/<branch>; a bare branch name resolves to the clone's local branch,
-  # which is only current on a fresh clone. Empty keeps the Makefile's pin.
+  # `git fetch origin` and then `git checkout --detach <rev>`, so write a branch
+  # as origin/<branch>. A bare branch name resolves only to a local branch, and
+  # a clone has one only for the default branch (as of the clone); any other
+  # bare name fails. Empty keeps the Makefile's pin.
   workflow_dispatch:
     inputs:
       provider_rev:
@@ -36,7 +37,9 @@ on:
         description: "auth.policy-verifier revision: SHA, tag or origin/<branch>. Empty keeps the Makefile pin."
         type: string
         default: ""
-  # e2e-develop.yml calls this workflow with every input at origin/develop.
+  # For callers inside this repository only (e2e-develop.yml, with every input
+  # at origin/develop): the checkout below names no `repository:`, so from
+  # another repository it would check out the caller instead of this suite.
   workflow_call:
     inputs:
       provider_rev:
@@ -54,11 +57,20 @@ permissions:
 
 jobs:
   test-e2e:
+    # A run with an override posts its check under a name of its own, so it is
+    # never taken for the gate's `test-e2e`.
+    name: ${{ (inputs.provider_rev || inputs.proxy_rev || inputs.verifier_rev) && 'test-e2e (overrides, not the release gate)' || 'test-e2e' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
+      # auth.provider's .github/workflows/umbrella-e2e.yml runs this suite on
+      # its pull requests and mirrors the environment steps below (node,
+      # corepack and pnpm, the HTTPS rewrite, ~/.npmrc) and the logs and
+      # teardown steps at the end. Change them there too.
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -82,7 +94,10 @@ jobs:
 
       # An empty input keeps the Makefile's pin, so only a given one is passed:
       # a variable on make's command line overrides the Makefile's `:=`, and an
-      # empty one would override the pin with nothing.
+      # empty one would override the pin with nothing. A given one is checked
+      # first, because make expands the value again — `$(shell …)` in it would
+      # run, and a `"` would close the Makefile's quoting — so only the
+      # characters a SHA, a tag or origin/<branch> needs are let through.
       - name: Check out the sibling revisions
         env:
           PROVIDER_REV_INPUT: ${{ inputs.provider_rev }}
@@ -90,14 +105,26 @@ jobs:
           VERIFIER_REV_INPUT: ${{ inputs.verifier_rev }}
         run: |
           args=()
-          if [ -n "$PROVIDER_REV_INPUT" ]; then args+=("PROVIDER_REV=$PROVIDER_REV_INPUT"); fi
-          if [ -n "$PROXY_REV_INPUT" ]; then args+=("PROXY_REV=$PROXY_REV_INPUT"); fi
-          if [ -n "$VERIFIER_REV_INPUT" ]; then args+=("VERIFIER_REV=$VERIFIER_REV_INPUT"); fi
+          rev_pattern='^[A-Za-z0-9][A-Za-z0-9._/-]*$'
+          add() { # <input name> <Makefile variable> <value>
+            if [ -z "$3" ]; then return 0; fi
+            if [[ ! "$3" =~ $rev_pattern ]]; then
+              echo "::error::$1 is not a SHA, a tag or origin/<branch>: $(printf '%q' "$3"). Use letters, digits and . _ / - only, starting with a letter or digit."
+              exit 1
+            fi
+            args+=("$2=$3")
+          }
+          add provider_rev PROVIDER_REV "$PROVIDER_REV_INPUT"
+          add proxy_rev PROXY_REV "$PROXY_REV_INPUT"
+          add verifier_rev VERIFIER_REV "$VERIFIER_REV_INPUT"
           make setup "${args[@]}"
 
       # Each revision is resolved to the SHA it checked out, written to the job
       # summary next to the Makefile's pin, and passed to the suite as that SHA,
       # so a branch that moves while the suite runs cannot change what it tests.
+      # A run is the gate when nothing was overridden; whether every sibling
+      # happens to sit at its pin is reported as a separate fact, since
+      # origin/develop can equal a pin.
       - name: Record the revisions under test
         id: revs
         env:
@@ -106,13 +133,13 @@ jobs:
           VERIFIER_REV_INPUT: ${{ inputs.verifier_rev }}
         run: |
           rows=""
-          gate=true
+          at_pins=true
           record() { # <output key> <repository> <Makefile variable> <requested revision>
             local pin sha
             pin="$(sed -n "s/^$3 := //p" Makefile)"
             sha="$(git -C "repos/$2" rev-parse HEAD)"
             echo "$1=$sha" >> "$GITHUB_OUTPUT"
-            if [ "$sha" != "$pin" ]; then gate=false; fi
+            if [ "$sha" != "$pin" ]; then at_pins=false; fi
             rows+="| [o3co/$2](https://github.com/o3co/$2/commit/$sha) | ${4:-pin} | \`$sha\` | \`$pin\` |"$'\n'
           }
           record provider auth.provider PROVIDER_REV "$PROVIDER_REV_INPUT"
@@ -121,10 +148,16 @@ jobs:
           {
             echo "## Revisions under test"
             echo
-            if [ "$gate" = true ]; then
-              echo "Every sibling is at its Makefile pin: this is a release-gate run."
+            if [ -z "$PROVIDER_REV_INPUT$PROXY_REV_INPUT$VERIFIER_REV_INPUT" ]; then
+              echo "**Release-gate run:** no revision was overridden."
             else
-              echo "**Not a release-gate run:** at least one sibling is not at its Makefile pin."
+              echo "**Not a release-gate run:** at least one revision was overridden."
+            fi
+            echo
+            if [ "$at_pins" = true ]; then
+              echo "Every sibling is at its Makefile pin."
+            else
+              echo "At least one sibling is not at its Makefile pin."
             fi
             echo
             echo "The suite: o3co/auth \`$(git rev-parse HEAD)\`."
