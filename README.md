@@ -84,6 +84,30 @@ make build    # Install deps and build
 make test-e2e # Start services, run E2E tests, tear down
 ```
 
+### E2E revisions
+
+`make test-e2e` tests each component at the revision pinned at the top of the `Makefile` (`PROVIDER_REV`, `PROXY_REV`, `VERIFIER_REV`). The pins are the tested baseline, and the pinned run of the [`e2e`](.github/workflows/e2e.yml) workflow — on every push to `develop`, on every pull request, and on a manual run left at its defaults — is the release gate. Moving the baseline means changing a pin in a pull request, where that gate runs.
+
+To test another revision, override its variable on the command line; a command-line variable wins over the Makefile's `:=`:
+
+```bash
+make test-e2e PROVIDER_REV=origin/develop  # a branch, written origin/<branch>
+make test-e2e PROXY_REV=v0.7.0             # a tag
+make test-e2e VERIFIER_REV=1e29749         # a SHA
+```
+
+`make setup` runs `git fetch origin` and then `git checkout --detach <rev>`, so write a branch as `origin/<branch>`: a bare branch name resolves to the clone's local branch, which is stale in a clone that already existed. Only commits reachable from the component's branches and tags are fetched.
+
+In CI:
+
+- **A manual run with overrides.** The `e2e` workflow's *Run workflow* form takes `provider_rev`, `proxy_rev` and `verifier_rev` in the same forms; an empty field keeps the pin. A run with any override is not the release gate, and its run name says so.
+- **Nightly against `develop`.** [`e2e-develop`](.github/workflows/e2e-develop.yml) runs the same suite daily with every component at `origin/develop`. It gates nothing: a red run means a component's `develop` no longer passes this suite, found before the pin is bumped at release time.
+- **From auth.provider.** auth.provider's `umbrella-e2e` workflow runs this suite, at this repository's `develop`, on its pull requests to `develop`, with the pull request's code as `PROVIDER_REV` and the proxy and verifier at their pins. A broken `develop` here turns those checks red.
+
+Every run's job summary lists the commit each component was tested at, next to its pin.
+
+A component change that narrows what it accepts (a required config key, a stricter claim, a new status) is met here first: update `tests/` so that it passes against both the pinned component and the change, then the component's pull request can go green.
+
 ## License
 
 Apache License 2.0

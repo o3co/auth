@@ -1,0 +1,30 @@
+name: e2e-develop
+
+# Nightly, and NOT the release gate: the same suite as e2e.yml, with every
+# sibling at origin/develop instead of its Makefile pin. The gate stays
+# e2e.yml's pinned run. A red run here blocks nothing; it says that a sibling's
+# develop no longer passes this suite, which would otherwise surface only when
+# the pin is bumped at release time. The job summary resolves every revision
+# it tested to a SHA.
+#
+# `schedule` runs on the default branch (develop), so the suite is develop's
+# tests/ as well. GitHub disables a public repository's scheduled workflows
+# after 60 days without activity; re-enable this one from the Actions tab.
+run-name: e2e against every sibling's develop (nightly, not the release gate)
+
+on:
+  schedule:
+    - cron: "41 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-e2e-develop:
+    name: every sibling at develop, not the release gate
+    uses: ./.github/workflows/e2e.yml
+    with:
+      provider_rev: origin/develop
+      proxy_rev: origin/develop
+      verifier_rev: origin/develop
