@@ -84,6 +84,35 @@ make build    # Install deps and build
 make test-e2e # Start services, run E2E tests, tear down
 ```
 
+### E2E revisions
+
+`make test-e2e` tests each component at the revision pinned at the top of the `Makefile` (`PROVIDER_REV`, `PROXY_REV`, `VERIFIER_REV`). The pins are the tested baseline, and the pinned run of the [`e2e`](.github/workflows/e2e.yml) workflow — on every push to `develop`, on every pull request, and on a manual run left at its defaults — is the release gate. Moving the baseline means changing a pin in a pull request, where that gate runs.
+
+When moving a pin (a component's release cut):
+
+1. Check that the nightly `e2e-develop` workflow is still enabled and that its latest run is green: `gh workflow list --all -R o3co/auth` shows its state. GitHub disables a public repository's scheduled workflows after 60 days without activity, and this repository has gone longer than that between commits. Turn it back on with `gh workflow enable e2e-develop.yml -R o3co/auth`. A red nightly is the breakage the new pin is about to take in.
+2. Change the pin in a pull request, and record the green `e2e` run in the commit message.
+
+To test another revision, override its variable on the command line; a command-line variable wins over the Makefile's `:=`:
+
+```bash
+make test-e2e PROVIDER_REV=origin/develop  # a branch, written origin/<branch>
+make test-e2e PROXY_REV=v0.7.0             # a tag
+make test-e2e VERIFIER_REV=1e29749         # a SHA
+```
+
+`make setup` runs `git fetch origin` and then `git checkout --detach <rev>`, so write a branch as `origin/<branch>`. A bare branch name resolves only to a local branch, and a clone has one only for the default branch, as it was when cloned: any other bare name fails, and the default one is stale in a clone that already existed. Only commits reachable from the component's branches and tags are fetched.
+
+In CI:
+
+- **A manual run with overrides.** The `e2e` workflow's *Run workflow* form takes `provider_rev`, `proxy_rev` and `verifier_rev` in the same forms; an empty field keeps the pin. A run with any override is not the release gate: its run name and its check name (`test-e2e (overrides, not the release gate)`) say so.
+- **Nightly against `develop`.** [`e2e-develop`](.github/workflows/e2e-develop.yml) runs the same suite daily with every component at `origin/develop`. It gates nothing: a red run means a component's `develop` no longer passes this suite, found before the pin is bumped at release time.
+- **From auth.provider.** auth.provider's `umbrella-e2e` workflow runs this suite, at this repository's `develop`, on its pull requests to `develop`, with the pull request's code as `PROVIDER_REV` and the proxy and verifier at their pins. A broken `develop` here turns those checks red.
+
+Every run's job summary lists the commit each component was tested at, next to its pin.
+
+A component change that narrows what it accepts (a required config key, a stricter claim, a new status) is met here first: update `tests/` so that it passes against both the pinned component and the change, then the component's pull request can go green.
+
 ## License
 
 Apache License 2.0

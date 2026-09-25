@@ -5,7 +5,11 @@ authorization-code flow, and signature-verifying policy evaluation. The E2E
 also covers session-grant issuance and an optional validation proxy. Component
 revisions are pinned in `Makefile`; `make setup` and `make pull` check out those
 exact revisions. Updating the baseline means updating the pins and rerunning
-`make test-e2e`.
+`make test-e2e`, after checking that the nightly `e2e-develop` workflow is
+still enabled and green (the README's "E2E revisions" lists the steps). A run
+at other revisions — a command-line override such as
+`make test-e2e PROVIDER_REV=origin/develop`, or the nightly `e2e-develop`
+workflow — is not the baseline; see "E2E revisions" in the README.
 
 The disposable compose fixture proves:
 

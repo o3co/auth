@@ -84,6 +84,35 @@ make build    # 依存関係のインストールとビルド
 make test-e2e # サービス起動、E2E テスト実行、後片付け
 ```
 
+### E2E のリビジョン
+
+`make test-e2e` は各コンポーネントを `Makefile` 冒頭で固定したリビジョン（`PROVIDER_REV`、`PROXY_REV`、`VERIFIER_REV`）でテストする。このピンがテスト済みのベースラインであり、[`e2e`](.github/workflows/e2e.yml) ワークフローのピン通りの実行 — `develop` への push、すべての pull request、既定値のままの手動実行 — がリリースゲートである。ベースラインを動かすとは、pull request でピンを変更し、そこでゲートを通すことである。
+
+ピンを動かすとき（コンポーネントのリリースカット）:
+
+1. 夜間の `e2e-develop` ワークフローがまだ有効で、最新の実行が緑であることを確認する: `gh workflow list --all -R o3co/auth` で状態がわかる。GitHub は public リポジトリで 60 日間活動がないとスケジュール実行のワークフローを無効化し、このリポジトリはコミットの間隔がそれより長く空いたことがある。`gh workflow enable e2e-develop.yml -R o3co/auth` で再び有効にする。夜間実行が赤なら、それは新しいピンが持ち込もうとしている破損である。
+2. pull request でピンを変更し、緑になった `e2e` の実行をコミットメッセージに記録する。
+
+別のリビジョンをテストするには、コマンドラインで変数を上書きする。コマンドラインの変数は Makefile の `:=` より優先される:
+
+```bash
+make test-e2e PROVIDER_REV=origin/develop  # ブランチ（origin/<branch> と書く）
+make test-e2e PROXY_REV=v0.7.0             # タグ
+make test-e2e VERIFIER_REV=1e29749         # SHA
+```
+
+`make setup` は `git fetch origin` の後に `git checkout --detach <rev>` を実行するので、ブランチは `origin/<branch>` と書く。ブランチ名だけだとローカルブランチにしか解決されず、クローンにローカルブランチがあるのはデフォルトブランチ（クローンした時点のもの）だけである: それ以外のブランチ名は失敗し、デフォルトブランチ名は既存のクローンでは古いままである。取得されるのはコンポーネントのブランチとタグから辿れるコミットだけである。
+
+CI では:
+
+- **上書きを指定した手動実行。** `e2e` ワークフローの *Run workflow* フォームは `provider_rev`、`proxy_rev`、`verifier_rev` を同じ形式で受け取る。空欄はピンのまま。1 つでも上書きした実行はリリースゲートではなく、実行名とチェック名（`test-e2e (overrides, not the release gate)`）がそれを示す。
+- **`develop` に対する夜間実行。** [`e2e-develop`](.github/workflows/e2e-develop.yml) は毎日、全コンポーネントを `origin/develop` にして同じスイートを実行する。何もゲートしない。赤は、あるコンポーネントの `develop` がこのスイートを通らなくなったことを意味し、リリース時にピンを上げる前に見つかる。
+- **auth.provider から。** auth.provider の `umbrella-e2e` ワークフローは、`develop` 向けの pull request ごとに、このリポジトリの `develop` のスイートを、pull request のコードを `PROVIDER_REV` とし proxy と verifier はピンのままで実行する。ここの `develop` が壊れると、そのチェックが赤になる。
+
+どの実行でも、ジョブサマリーに各コンポーネントをテストしたコミットがピンと並べて記録される。
+
+コンポーネントが受け付けるものを狭める変更（必須の設定キー、より厳しい claim、新しいステータス）は、まずここで受け止める: `tests/` を、固定中のコンポーネントとその変更の両方で通るように更新してから、コンポーネント側の pull request を緑にする。
+
 ## ライセンス
 
 Apache License 2.0
