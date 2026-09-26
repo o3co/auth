@@ -1,5 +1,5 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
-PROVIDER_REV := bd358419187682639e44e942774f8b054b14d202
+PROVIDER_REV := 81a4474f69231c8b1da244b39f2b43cd4f08c129
 PROXY_REV := dee5a7963713fc0d4fa07c9cac2cde5d9e4cd937
 VERIFIER_REV := 1e29749a376885758291590184cd317e3c2b0e84
 
