@@ -1,5 +1,7 @@
 # User fixture for the cross-component E2E, consumed by the standalone
-# template's YAML user repository (CLIENT_USER_TYPE=yaml).
+# template's YAML user repository (CLIENT_USER_TYPE=yaml, which
+# auth.provider#728 renames to STANDALONE_ADAPTERS_USER_REPOSITORY; the compose
+# sets both).
 #
 # The template defaults `repositories.user.type` to "http", which needs a
 # separate identity service to answer CLIENT_USER_AUTHENTICATE_URL. The E2E has

@@ -61,6 +61,23 @@ COPY templates/standalone/ templates/standalone/
 
 RUN pnpm -r run build
 
+# Every package's config/ directory and the template's, gathered by glob into
+# one staging tree the runtime stage copies whole — unlike the package lists
+# above, not hand-maintained. auth.provider#728 moves each package's defaults
+# to its own config/reference.conf, layered for the modules the composition
+# loads, so the image needs every such directory, including ones added after
+# this file was last edited. A COPY per directory cannot follow that: COPY of
+# a path that does not exist fails the build, and the suite runs against
+# provider revisions from before and after each directory appears. The loop
+# takes whichever exist.
+RUN mkdir -p /tmp/config-staging \
+ && for dir in packages/*/config templates/standalone/config; do \
+      if [ -d "$dir" ]; then \
+        mkdir -p "/tmp/config-staging/$dir" \
+        && cp -R "$dir/." "/tmp/config-staging/$dir/"; \
+      fi; \
+    done
+
 #############################################
 FROM node-base AS runtime
 
@@ -92,7 +109,6 @@ RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc \
     pnpm install --prod=false --frozen-lockfile
 
 COPY --from=builder /home/node/packages/core/dist/ packages/core/dist/
-COPY --from=builder /home/node/packages/core/config/ packages/core/config/
 COPY --from=builder /home/node/packages/device-grant/dist/ packages/device-grant/dist/
 COPY --from=builder /home/node/packages/dpop/dist/ packages/dpop/dist/
 COPY --from=builder /home/node/packages/federation-apple/dist/ packages/federation-apple/dist/
@@ -107,9 +123,10 @@ COPY --from=builder /home/node/packages/oauth-token-exchange/dist/ packages/oaut
 COPY --from=builder /home/node/packages/redis/dist/ packages/redis/dist/
 COPY --from=builder /home/node/packages/session/dist/ packages/session/dist/
 COPY --from=builder /home/node/packages/webauthn/dist/ packages/webauthn/dist/
-COPY --from=builder /home/node/packages/webauthn/config/ packages/webauthn/config/
 COPY --from=builder /home/node/templates/standalone/dist/ templates/standalone/dist/
-COPY --from=builder /home/node/templates/standalone/config/ templates/standalone/config/
+# packages/<name>/config/ and templates/standalone/config/, as gathered in the
+# builder stage.
+COPY --from=builder /tmp/config-staging/ ./
 
 USER node
 
