@@ -25,6 +25,28 @@ services:
       - ./provider/clients.yaml:/home/node/templates/standalone/config/clients.yaml:ro
       - ./provider/users.yaml:/home/node/templates/standalone/config/users.yaml:ro
     environment:
+      # ---- Old and new names, while auth.provider#728 lands ---------------
+      # auth.provider#728 moves most of the settings below to new
+      # configuration paths, and a variable's name is derived from its path,
+      # so the names change with them. The provider reads the environment only
+      # through `${?VAR}` in its .conf files: a name it does not read is
+      # ignored without a word, so a renamed setting left under its old name
+      # alone would fall back to its default silently. This suite runs against
+      # the pinned provider AND against provider develop (nightly, and on every
+      # auth.provider pull request) while the renames land one pull request at
+      # a time, so each renamed variable is set under BOTH names: the old one,
+      # then the new one on the line below it. Whichever name a provider
+      # revision reads, it gets the value. The two lines of a pair carry the
+      # same value; change them together.
+      #
+      # A follow-up removes the old names once auth.provider has completed
+      # #728 and PROVIDER_REV is pinned past it.
+      #
+      # OAUTH_GRANTS_AUTHORIZATION_CODE_PKCE_REQUIRE_S256 used to be set here
+      # and is gone rather than doubled: the provider has ignored that key
+      # since auth.provider#273, which requires S256 PKCE of every
+      # authorization-code client, and #728 retires it.
+
       # auth.provider#282 made EdDSA the default and removed the HS256
       # fallback, so the algorithm must be named explicitly. The E2E stays on
       # HS256 deliberately: the verifier requires https for a JWKS URI, with an
@@ -33,29 +55,37 @@ services:
       # name, not loopback. A JWKS-based E2E would fail the verifier's boot
       # check, so the two services share a secret instead.
       - OAUTH_JWT_ALGORITHM=HS256
+      - KEY_STORE_LOCAL_ALGORITHM=HS256
       # #282 also put a >=32-byte floor on the decoded secret, measured at the
       # smallest plausible reading. The value is defined once in the Makefile
       # and interpolated here, because the ABAC tests mint tokens with the same
-      # secret — a second literal is how the two drifted apart before.
+      # secret — a second literal is how the two drifted apart before. Both
+      # names interpolate the Makefile's OAUTH_JWT_SECRET, which keeps its
+      # name: the verifier and the test processes read it too.
       - OAUTH_JWT_SECRET=${OAUTH_JWT_SECRET:?run via make test-e2e}
+      - KEY_STORE_LOCAL_SECRET=${OAUTH_JWT_SECRET:?run via make test-e2e}
       # auth.provider requires a canonical issuer and never derives one from the
       # request (auth.provider#266). It is an identifier, not a URL anything
       # fetches, so the E2E pins a fixed one both services agree on — defined
       # once in the Makefile, like the secret.
       - OAUTH_JWT_ISSUER=${OAUTH_JWT_ISSUER:?run via make test-e2e}
       - SESSION_SECRET=lO0QH09fuKSGuViZ9myJbH3jsgai99A2GpC3RYRuy6Y=
+      - SESSION_STORE_SECRET=lO0QH09fuKSGuViZ9myJbH3jsgai99A2GpC3RYRuy6Y=
       - SESSION_SECURE=false
+      - SESSION_STORE_SECURE=false
       # __Host- prefixed default requires secure=true; plain-HTTP E2E needs both overrides
       - SESSION_NAME=auth.session
+      - SESSION_STORE_NAME=auth.session
 
       # ---- Redis-backed state -------------------------------------------
-      # DEPLOYMENT_MODE=multi makes the provider itself audit this block:
+      # Deployment mode `multi` makes the provider itself audit this block:
       # boot FAILS naming every offender if any shared store is still held in
       # process memory (auth.provider#271/#315). The E2E declares it so a
       # future drift back to an in-memory store is a red build, not a suite
       # that silently stops exercising the Redis paths — the exact failure
       # this issue was filed for.
       - DEPLOYMENT_MODE=multi
+      - CORE_DEPLOYMENT_MODE=multi
       # THE key the old compose was missing. One ioredis socket per replica
       # backs the refresh-token-family store AND — via
       # standaloneRedisClientsModule — the 4 user-session stores, the rate
@@ -64,33 +94,40 @@ services:
       # without this the provider retried a dead socket while the old suite
       # stayed green.
       - REFRESH_TOKEN_FAMILY_STORE_REDIS_URL=redis://redis:6379
+      - REDIS_CLIENTS_URL=redis://redis:6379
       # express-session's own store; a separate connection from the shared
       # ioredis socket above, hence a separate URL.
       - SESSION_STORAGE_REDIS_URL=redis://redis:6379
+      - SESSION_STORE_STORAGE_REDIS_URL=redis://redis:6379
       # The four user-session stores (session, RP registry, family index,
-      # federation index) — memory by default, which DEPLOYMENT_MODE=multi
+      # federation index) — memory by default, which deployment mode `multi`
       # refuses.
       - USER_SESSION_STORES_ADAPTER=redis
+      - STANDALONE_ADAPTERS_USER_SESSION_STORES=redis
       # OAuth-endpoint rate-limit counters — memory by default, likewise
       # refused under multi.
       - RATE_LIMITER_ADAPTER=redis
+      - STANDALONE_ADAPTERS_RATE_LIMITER=redis
       # Authorization-code repository. Already the template default, pinned
       # here because the whole point of the suite is that codes round-trip
       # through Redis rather than a per-process Map.
       - OAUTH_CODE_ADAPTER=redis
+      - STANDALONE_ADAPTERS_CODE_REPOSITORY=redis
       # NOTE: the legacy CLIENT_CODE_ENDPOINT_URI that used to sit here is
       # gone. It feeds `repositories.code.redis.endpointUri`, which nothing
-      # reads once `oauth.code.adapter = "redis"` routes the code repository
-      # onto the shared socket above — it was a no-op pretending to be
-      # configuration.
+      # reads once the code-repository adapter above is "redis" and routes the
+      # code repository onto the shared socket — it was a no-op pretending to
+      # be configuration.
       # Federation token store (upstream IdP tokens per session) — memory by
-      # default, which DEPLOYMENT_MODE=multi refuses once the standalone's own
-      # memory modules declare replica-unsafe state (auth.provider#455/#456).
-      # The Redis adapter encrypts every envelope (auth.provider#450) and needs
-      # its own 32-byte key; this one is for the disposable E2E rig only, like
-      # SESSION_SECRET above. Both lines are ignored by a provider that
-      # predates #455/#456, so the compose can carry them ahead of that change.
+      # default, which deployment mode `multi` refuses once the standalone's
+      # own memory modules declare replica-unsafe state
+      # (auth.provider#455/#456). The Redis adapter encrypts every envelope
+      # (auth.provider#450) and needs its own 32-byte key; this one is for the
+      # disposable E2E rig only, like the session secret above. These lines
+      # are ignored by a provider that predates #455/#456, so the compose can
+      # carry them ahead of that change. The key's name is unchanged by #728.
       - FEDERATION_TOKEN_STORE_TYPE=redis
+      - STANDALONE_ADAPTERS_FEDERATION_TOKEN_STORE=redis
       - REDIS_FEDERATION_TOKEN_STORE_ENCRYPTION_KEY=zeJFqmOncR4DvzI12bGZq4sIGkOKGHuD/ipQ8QZG7F4=
 
       # ---- Repositories --------------------------------------------------
@@ -98,6 +135,7 @@ services:
       # external identity service. The E2E has none, so it uses the built-in
       # YAML directory and mounts users.yaml above.
       - CLIENT_USER_TYPE=yaml
+      - STANDALONE_ADAPTERS_USER_REPOSITORY=yaml
 
       # ---- Issuance policy the suite means to exercise --------------------
       # RFC 8707 resource indicators are opt-in (secure-by-default). The E2E
@@ -112,11 +150,10 @@ services:
       # the gate lets a verified user through, and the negative case proves it
       # stops an unverified one.
       - OAUTH_REQUIRE_EMAIL_VERIFIED=true
+      # The `session` grant, which the injection proxies below exchange the
+      # browser's session cookie at.
       - OAUTH_GRANTS_SESSION_ENABLED=true
-      # Public clients are forced onto S256 by the provider regardless; pinning
-      # it globally means a future confidential client in this suite cannot
-      # quietly fall back to `plain`.
-      - OAUTH_GRANTS_AUTHORIZATION_CODE_PKCE_REQUIRE_S256=true
+      - OAUTH_SESSION_ENABLED=true
     depends_on:
       redis:
         condition: service_healthy
@@ -256,7 +293,8 @@ services:
       # Registered in tests/provider/clients.yaml for the `session` grant.
       - INJECTION_CLIENT_ID=e2e-bff
       - INJECTION_SCOPE=read:project
-      # The provider's SESSION_NAME above; the proxy defaults to connect.sid.
+      # The provider's session cookie name (SESSION_NAME / SESSION_STORE_NAME
+      # above); the proxy defaults to connect.sid.
       - INJECTION_SESSION_COOKIE_NAME=auth.session
       # The default, spelled out: the sibling service below turns it on, and
       # the suite asserts the pass-through this one keeps.
