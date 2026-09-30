@@ -9,11 +9,10 @@
  *
  * With CLIENT_ID / CLIENT_SECRET set, the proxy authenticates to
  * `POST /oauth/introspect` with HTTP Basic, and the provider then pins the
- * token's audience to the client's `allowedAudiences ∪ {clientId}`
- * (auth.provider v0.12.0+; auth.proxy README, "Introspection client
- * identity"). The uncredentialed `proxy` service in tests/token-flow/
- * index.test.js never reaches that pin. Both proxies here forward to
- * tests/fixtures/echo-upstream.mjs.
+ * token's audience to the client's `allowedAudiences ∪ {clientId}` (auth.proxy
+ * README, "Introspection client identity"). The uncredentialed `proxy` service
+ * in tests/token-flow/index.test.js never reaches that pin. Both proxies here
+ * forward to tests/fixtures/echo-upstream.mjs.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AUDIENCE, CLIENT_ID, codeFlow, decodeJwt, introspect, login, refresh } from '../shared/oauthFlow.js';
@@ -70,14 +69,14 @@ describe('Validation mode with client credentials (CLIENT_ID / CLIENT_SECRET)', 
 		const res = await send(CREDENTIALED_PROXY, outOfAudience);
 		expect(res.status).toBe(401);
 		expect(res.body).toEqual({ code: 401, message: 'Invalid Token' });
-		// RFC 6750 §3, required on this refusal since auth.proxy v0.7.0 (#95 F29).
+		// RFC 6750 §3: the proxy sends the challenge on this refusal.
 		expect(res.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"');
 	});
 
 	it('answers 502 Provider Configuration Error when the provider refuses the proxy credentials', async () => {
-		// auth.proxy v0.7.0 (#95 F7): the provider's 401 refused the proxy's own
-		// Basic credential, so the caller's — perfectly valid — token was never
-		// examined. That is the operator's to fix, not a 401 for the caller.
+		// The provider's 401 refuses the proxy's own Basic credential, so the
+		// caller's valid token is never examined: the operator's to fix, not a
+		// 401 for the caller.
 		const res = await send(MISCONFIGURED_PROXY, inAudience);
 		expect(res.status).toBe(502);
 		expect(res.body).toEqual({ code: 502, message: 'Provider Configuration Error' });

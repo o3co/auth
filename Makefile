@@ -38,20 +38,18 @@ build: setup
 	cd repos/auth.proxy && pnpm install --frozen-lockfile && pnpm run build
 	cd repos/auth.policy-verifier && pnpm install --frozen-lockfile && pnpm run build
 
-# One definition of the shared HS256 secret, interpolated into the containers
-# by docker compose and exported to the test processes, which mint their own
-# tokens with it. Defining it twice is how the suite drifted before: the tests
-# fell back to a stale literal and every negative case failed as a 401 that
-# read like a policy failure. auth.provider#282 requires >=32 decoded bytes.
+# The one definition of the shared HS256 secret, interpolated into the
+# containers by docker compose and exported to the test processes, which mint
+# their own tokens with it. A second copy can drift, and every negative case
+# then fails as a 401 that reads like a policy failure. The provider requires
+# at least 32 bytes once decoded.
 export OAUTH_JWT_SECRET := qmV+afsq/SMZ7hPGs9edVQDvPzNmjXemJNjqti181v0=
 
-# Same one-definition rule for the issuer and audience: interpolated into the
-# containers by docker compose AND read by the test processes, which pin the
-# claims the provider stamps. The tests carried their own fallback literals
-# before (o3co/auth#12) — the exact two-definitions drift the secret already
-# had. The audience also appears once more in tests/provider/clients.yaml
-# (`allowedAudiences`), which is volume-mounted and out of interpolation's
-# reach; the comment there names this copy.
+# The same one-definition rule for the issuer and audience: interpolated into
+# the containers by docker compose and read by the test processes, which pin
+# the claims the provider stamps. The audience appears again in every
+# `allowedAudiences` of tests/provider/clients.yaml, which is volume-mounted
+# and out of interpolation's reach; the comment there names this copy.
 export OAUTH_JWT_ISSUER := https://auth.e2e.test
 export OAUTH_JWT_AUDIENCE := https://api.e2e.test
 

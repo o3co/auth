@@ -8,13 +8,13 @@
  * Injection proxy, stripped: http://localhost:3093 (INJECTION_STRIP_INBOUND_AUTHORIZATION=true)
  *
  * Both forward to tests/fixtures/echo-upstream.mjs, which answers with the
- * headers it received — so every assertion here is about what actually
- * reached the upstream, not about what an application upstream made of it.
+ * headers it received, so every assertion here is about what reached the
+ * upstream.
  *
- * The contract is auth.proxy v0.7.0's README ("Injection mode", "Inbound
+ * The contract is auth.proxy's README ("Injection mode", "Inbound
  * Authorization headers", "Scope boundary") and auth.provider's session grant
  * (packages/oauth/src/grants/session.mts). The proxy's own unit tests stub the
- * provider; this is the first place the two meet.
+ * provider; here the two meet.
  */
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';

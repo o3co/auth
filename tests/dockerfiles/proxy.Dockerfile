@@ -1,5 +1,7 @@
 # E2E test Dockerfile for auth.proxy
-# Based on repos/auth.proxy/Dockerfile with secret mount for GitHub Packages
+# Based on repos/auth.proxy/Dockerfile. The npmrc build secret mounts the host's
+# ~/.npmrc into the pnpm install without writing it into a layer. Every package
+# resolves from the public npm registry, so an empty file is enough.
 ##############################################
 FROM node:24-alpine AS base
 

@@ -1,32 +1,30 @@
 # Client registrations for the cross-component E2E, mounted over the
 # standalone template's `config/clients.yaml` (which ships empty).
 #
-# `firstParty: true` is REQUIRED for a client to use `/authorize`
-# (auth.provider#267/#316/#330). `/authorize` mints a code as soon as the
-# session is authenticated, with no consent step, so the provider admits only
-# clients the operator vouches for. There is no opt-out: the one-time
-# `allowUnmarkedClients` migration flag was removed in #330, and a config still
-# setting it fails at boot.
+# This rig configures no consent store (the template's default, "none"), so
+# `/authorize` admits only clients registered `firstParty: true`, and mints
+# their codes with no consent step. With a consent store, a client that is not
+# first-party would be admitted through the deployment's consent page instead.
 #
-# `tokenEndpointAuthMethod: "none"` makes this a public client, which is what
-# the E2E wants: the provider then MANDATES PKCE/S256 at `/authorize`
-# regardless of operator config (RFC 9700 §2.1.1), so the suite exercises the
-# strict path rather than whatever `pkce.requireS256` happens to be set to.
+# `tokenEndpointAuthMethod: "none"` makes this a public client, so the suite
+# calls the token endpoint with `client_id` alone. The provider requires PKCE
+# of every authorization-code client, public or confidential, and admits only
+# S256 unless the registration sets `allowPlainPkce: true` (auth.provider
+# packages/oauth/src/grants/pkce.mts). No client here sets it, so the suite
+# exercises the strict path.
 #
 # `allowedAudiences` is what lets the RFC 8707 `resource` parameter stamp
-# `aud: https://api.e2e.test` on the access token — the value
-# auth.policy-verifier pins via OAUTH_JWT_AUDIENCE. Without it the minted token
-# carries no audience the verifier will accept. (The audience URL here is the
-# one deliberate second copy of OAUTH_JWT_AUDIENCE: this file is volume-mounted,
-# so compose interpolation cannot reach it.)
+# `aud: https://api.e2e.test` on the access token, the value
+# auth.policy-verifier pins via OAUTH_JWT_AUDIENCE. The URL in every
+# `allowedAudiences` here is a deliberate copy of OAUTH_JWT_AUDIENCE: this file
+# is volume-mounted, so compose interpolation cannot reach it.
 #
-# `allowedScopes` is a provider-vocabulary ceiling: the provider compares these
-# strings opaquely and never parses them. The `read:project` /
-# `read:project.member` entries are nevertheless WRITTEN in
+# `allowedScopes` is a provider-vocabulary ceiling the provider compares
+# opaquely. The `read:project` / `read:project.member` entries are written in
 # auth.policy-verifier's `{action}:{resourceType}` grammar
-# (ResourceActionScopeRuleCollector), because the ABAC suite needs tokens whose
-# opaque scope strings happen to satisfy the verifier's derived rule. Grammar
-# owner: auth.policy-verifier; string owner: this registration. See
+# (ResourceActionScopeRuleCollector) because the ABAC suite needs tokens whose
+# scope strings satisfy the verifier's derived rule. Grammar owner:
+# auth.policy-verifier; string owner: this registration. See
 # docs/claims-contract.md.
 e2e-app:
   tokenEndpointAuthMethod: "none"
@@ -45,10 +43,10 @@ e2e-app:
     - "refresh_token"
     - "session"
 
-# A deliberately unmarked client. `/authorize` must refuse it with
-# `unauthorized_client` — this is the negative half of the first-party
-# invariant, and it is registered here so the suite can prove the refusal
-# rather than assume it.
+# A client not marked first-party. With no consent store, `/authorize` must
+# refuse it with `unauthorized_client`: the negative half of the first-party
+# rule, registered here so the suite can prove the refusal rather than assume
+# it.
 e2e-third-party:
   tokenEndpointAuthMethod: "none"
   firstParty: false
@@ -66,13 +64,12 @@ e2e-third-party:
 # the proxy sends `client_id` in the body and the browser's session cookie,
 # never a secret (auth.proxy src/modes/injection/session-grant-client.mts).
 #
-# The session grant stamps `aud` from the FIRST `allowedAudiences` entry,
-# falling back to the client id (auth.provider packages/oauth/src/grants/
-# session.mts), so this is what makes an injected token carry the resource
-# audience the E2E pins. `firstParty` is not set: it is read only at
-# `/authorize`, which this client never calls. It is its own registration,
-# rather than a reuse of `e2e-app`, so the suites can tell from `azp` that
-# the token the upstream received was minted for the proxy's client.
+# The session grant stamps `aud` from the first `allowedAudiences` entry,
+# falling back to the client id (auth.provider
+# packages/oauth/src/grants/session.mts), which gives an injected token the
+# audience the E2E pins. `firstParty` is read only at `/authorize`, which this
+# client never calls. A registration of its own, not `e2e-app`, so the suites
+# can tell from `azp` that the upstream's token was minted for the proxy.
 e2e-bff:
   tokenEndpointAuthMethod: "none"
   allowedScopes:
@@ -88,22 +85,22 @@ e2e-bff:
 # §2.1), hence `client_secret_basic`.
 #
 # With a client identified, the provider pins the introspected token's
-# audience to `allowedAudiences ∪ {clientId}` (auth.provider v0.12.0+,
+# audience to `allowedAudiences ∪ {clientId}` (auth.provider
 # packages/oauth/src/routes.mts): a token for any other audience is
-# `active: false`. Registering the E2E audience here is what makes the
-# resource server's own tokens introspectable; the suite also presents a
+# `active: false`. The E2E audience is registered here so the resource
+# server's own tokens introspect as active; the suite also presents a
 # provider-issued token for another audience to prove the pin holds.
 #
-# The secret is plain text on purpose — the repository compares a literal
-# when the stored value is not a bcrypt hash — and it is the one deliberate
-# second copy of the proxy's CLIENT_SECRET, for the same reason as the
-# audience above: this file is volume-mounted, out of interpolation's reach.
-# It carries `+`, `/` and `=` deliberately, so the RFC 6749 §2.3.1 form
-# encoding of the Basic header is exercised end to end. Disposable rig only.
+# The secret is plain text on purpose (the repository compares a literal when
+# the stored value is not a bcrypt hash) and is the one deliberate second copy
+# of the proxy's CLIENT_SECRET, since this file is out of interpolation's
+# reach. Its `+`, `/` and `=` exercise the RFC 6749 §2.3.1 form encoding of
+# the Basic header end to end. Disposable rig only.
 #
-# `allowedGrantTypes: []` denies every grant: it only introspects. An ABSENT
-# list would mean "no restriction" (auth.provider packages/core/src/
-# repositories/types.mts), so the empty list is written out.
+# `allowedGrantTypes: []` denies every grant: the client only introspects. An
+# absent list would admit every grant that does not require an explicit
+# allowlist of its own, with `oauth.requireGrantTypeAllowlist` at its default,
+# off (auth.provider packages/core/src/repositories/allowedGrantTypes.mts).
 e2e-resource-server:
   tokenEndpointAuthMethod: "client_secret_basic"
   clientSecret: "AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0="
