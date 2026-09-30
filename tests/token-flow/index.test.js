@@ -6,10 +6,9 @@
  * Proxy:    http://localhost:3098 (forwards to provider)
  *
  * Every token on the happy path below is minted by the provider through
- * `login -> /authorize (PKCE) -> /token`. Nothing here hand-signs a token and
- * calls the result an end-to-end test — that was o3co/auth#3. Hand-signing
- * survives only in the negative cases, where the point IS to present something
- * the provider would never issue (an expired token, a garbage token).
+ * `login -> /authorize (PKCE) -> /token`. Hand-signing appears only in the
+ * negative cases, which present something the provider would never issue (an
+ * expired token, a garbage token).
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import axios from 'axios';
@@ -77,26 +76,21 @@ describe('Real grant path: login -> /authorize (PKCE) -> /token', () => {
 
 	it('carries `scope` as a space-delimited string, not a `scopes` array', () => {
 		const { payload } = decodeJwt(grant.access_token);
-		// The claim-shape drift o3co/auth#3 called out. The verifier reads
-		// `scope` (string); a `scopes` array would silently authorize nothing.
+		// The verifier reads `scope` (a string); a `scopes` array would silently
+		// authorize nothing.
 		expect(typeof payload.scope).toBe('string');
 		expect(payload.scope.split(' ')).toContain('read:project');
 		expect(payload.scopes).toBeUndefined();
 	});
 
 	it('gives the id_token and refresh token their own `typ`', () => {
-		// The verifier's ONLY discriminator between token kinds is this header
-		// (see the negative tests in tests/abac). Pinning all three here means
-		// a provider-side change to any of them fails on this repo's CI rather
+		// The verifier's only discriminator between token kinds is this header
+		// (see the negative tests in tests/abac). Pinning all three means a
+		// provider-side change to any of them fails on this repo's CI rather
 		// than silently widening what /verify accepts.
 		//
-		// The id_token stamps the standard `JWT` as of auth.provider#394
-		// (v0.10.0): the nonstandard `id+jwt` failed strict external RPs and
-		// bought nothing, because what keeps an id_token out of `/verify` is
-		// being disjoint from RFC 9068's `at+jwt` — which `JWT` satisfies just
-		// as well. Verification accepts both spellings during the migration
-		// window auth.provider#402 closes; this pins what the provider MINTS,
-		// so it is the standard value with no dual accept.
+		// The id_token carries the standard `JWT`: what keeps it out of
+		// `/verify` is being disjoint from RFC 9068's `at+jwt`.
 		expect(decodeJwt(grant.id_token).header.typ).toBe('JWT');
 		expect(decodeJwt(grant.refresh_token).header.typ).toBe('rt+jwt');
 	});
@@ -116,8 +110,7 @@ describe('Real grant path: /userinfo and /introspect', () => {
 	it('returns the scope-filtered claims for the provider-issued token', async () => {
 		const res = await userinfo(grant.access_token);
 		expect(res.status).toBe(200);
-		// `sub` must be the user id the Store published, not the session id —
-		// the AT-sub-from-session defect (auth.provider#259) would surface here.
+		// `sub` must be the user id the Store published, not the session id.
 		expect(res.body.sub).toBe('user-e2e-1');
 		// Granted `email` scope, so these appear; `name` was never requested.
 		expect(res.body.email).toBe('e2e-user@e2e.test');
@@ -161,12 +154,10 @@ describe('Real grant path: refresh rotation and replay', () => {
 		expect(decodeJwt(fresh.access_token).payload.aud).toBe(AUDIENCE);
 
 		// RFC 8707 §2.2 has the client repeat `resource` on refresh, and the
-		// provider takes that literally — omitting it falls back to the client
-		// id. The refreshed token is then still perfectly valid and completely
-		// unusable at the resource server, which is a trap worth pinning: if
-		// the provider ever starts carrying the audience forward, this test
-		// fails and tells us the contract changed rather than letting a
-		// silently-broken refresh path ship.
+		// provider takes that literally: omitting it falls back to the client
+		// id. The refreshed token is valid and unusable at the resource server;
+		// if the provider starts carrying the audience forward, this test fails
+		// and says the contract changed.
 		const noResource = await refresh({ refreshToken: fresh.refresh_token, resource: null });
 		expect(noResource.status).toBe(200);
 		expect(decodeJwt(noResource.body.access_token).payload.aud).toBe(CLIENT_ID);
@@ -182,9 +173,8 @@ describe('/authorize admission rules', () => {
 			clientId: THIRD_PARTY_CLIENT_ID,
 			scope: 'read:project',
 		});
-		// auth.provider#316/#330: the invariant is unconditional, and the
-		// refusal is delivered as a redirect per RFC 6749 §4.1.2.1 — no code
-		// is minted.
+		// The first-party invariant is unconditional, and the refusal is
+		// delivered as a redirect per RFC 6749 §4.1.2.1; no code is minted.
 		expect(res.status).toBe(302);
 		expect(res.query.get('error')).toBe('unauthorized_client');
 		expect(res.query.get('code')).toBeNull();
@@ -195,9 +185,9 @@ describe('/authorize admission rules', () => {
 		expect(unverified.status).toBe(200);
 		const { challenge } = pkce();
 		const res = await authorize({ cookie: unverified.cookie, challenge });
-		// auth.provider#297/#320, with OAUTH_REQUIRE_EMAIL_VERIFIED=true in
-		// the compose file. `access_denied` is RFC 6749 §4.1.2.1's code for a
-		// refusal by the authorization server, not a malformed request.
+		// OAUTH_REQUIRE_EMAIL_VERIFIED=true in the compose file. `access_denied`
+		// is RFC 6749 §4.1.2.1's code for a refusal by the authorization server,
+		// not a malformed request.
 		expect(res.status).toBe(302);
 		expect(res.query.get('error')).toBe('access_denied');
 		expect(res.query.get('code')).toBeNull();
@@ -227,18 +217,16 @@ describe('/authorize admission rules', () => {
 
 describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 	/*
-	 * The proxy runs in `validation` mode: when a request carries an
-	 * Authorization header, it introspects the token against INTROSPECT_URL
-	 * (the provider's /oauth/introspect) and refuses the request unless the
-	 * response says `active: true`. Only then does it forward upstream.
+	 * In `validation` mode, when a request carries an Authorization header,
+	 * the proxy introspects the token against INTROSPECT_URL (the provider's
+	 * /oauth/introspect) and forwards the request only if the response says
+	 * `active: true`.
 	 *
-	 * Which side rejected a request is decidable from the body, and these
-	 * tests assert on it rather than on the status alone:
+	 * The body tells which side rejected a request, and these tests assert on
+	 * it, not on the status alone, so a proxy that forwards everything cannot
+	 * pass as one that validates:
 	 *   - proxy:    {"code":401,"message":"Invalid Token"}   (its own shape)
 	 *   - provider: {"error":"invalid_token", ...}           (RFC 6750 shape)
-	 *
-	 * Asserting only the status would let "the proxy forwarded everything and
-	 * the upstream happened to reject it" pass as "the proxy validates".
 	 */
 
 	it('forwards a provider-issued token upstream and returns the upstream response', async () => {
@@ -318,8 +306,7 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 	it('serves its own liveness endpoint (not an auth assertion)', async () => {
 		// /_healthcheck is mounted ahead of the auth middleware, so it is only
 		// ever evidence that the proxy process is up. Do not add an
-		// Authorization header here and read a 200 as acceptance — that was the
-		// original defect in this suite.
+		// Authorization header here and read a 200 as acceptance.
 		const res = await proxy.get('/_healthcheck');
 		expect(res.status).toBe(200);
 	});

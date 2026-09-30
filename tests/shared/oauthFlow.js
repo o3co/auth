@@ -1,16 +1,13 @@
 /*
- * Shared driver for the REAL authorization-code flow against auth.provider.
+ * Shared driver for the real authorization-code flow against auth.provider.
  *
- * Both E2E packages (token-flow, abac) need a genuine provider-minted token,
- * and neither should hand-sign one on its happy path — that was the defect
- * behind o3co/auth#3: the suite verified liveness against tokens it minted
- * itself, so the provider->verifier contract (claim names, `typ`, `iss`,
- * `aud`) was never actually exercised.
+ * Both E2E packages (token-flow, abac) need genuine provider-minted tokens on
+ * their happy paths: a token the suite signs itself leaves the
+ * provider->verifier contract (claim names, `typ`, `iss`, `aud`) unexercised.
  *
- * Deliberately dependency-free: it runs on node's built-in `fetch` and
- * `crypto` so it can be imported across package boundaries (tests/token-flow
- * and tests/abac are separate pnpm packages) without either one having to
- * resolve a module from outside its own tree.
+ * Dependency-free (node's built-in `fetch` and `crypto`), so tests/token-flow
+ * and tests/abac, which are separate pnpm packages, can import it without
+ * resolving a module from outside their own tree.
  */
 import crypto from 'node:crypto';
 
@@ -19,16 +16,12 @@ export const PROXY_URL = process.env.PROXY_URL || 'http://localhost:3098';
 export const VERIFIER_URL = process.env.VERIFIER_URL || 'http://localhost:3097';
 
 /**
- * All three must equal the containers' values in tests/docker-compose.yml, and
- * all three are single-sourced in the Makefile (`export OAUTH_JWT_*`), which
- * `make test-e2e` feeds to both compose interpolation and this process. There
- * is deliberately no fallback on any of them: a default here would silently
- * drift from compose the next time a value changes — the two-definitions
- * failure mode 4ea0484 closed for the secret and o3co/auth#12 closed for
- * issuer/audience. The secret additionally matters to the negative ABAC
- * tests, which mint their own tokens with it: a value that merely looks
- * plausible produces 401s that read like a policy failure (auth.provider#282
- * put a >=32-byte floor on it).
+ * All three must equal the containers' values in tests/docker-compose.yml.
+ * They are defined once, in the Makefile (`export OAUTH_JWT_*`), which
+ * `make test-e2e` feeds to both compose interpolation and this process, and
+ * none has a fallback here: a default would silently drift from compose. The
+ * negative ABAC tests mint their own tokens with the secret, so a value that
+ * merely looks plausible produces 401s that read like a policy failure.
  */
 export const ISSUER = requireEnv('OAUTH_JWT_ISSUER');
 export const AUDIENCE = requireEnv('OAUTH_JWT_AUDIENCE');
@@ -74,11 +67,9 @@ export function pkce() {
 /**
  * POST /session/login — returns the session cookie header value.
  *
- * The `Origin` header is sent deliberately. The current provider accepts a
- * same-origin `Origin` (its CSRF check passes anything whose origin matches
- * the server's, and no-Origin requests outright), and auth.provider#344 will
- * make one of `Origin` / a signed double-submit token REQUIRED. Sending it now
- * works against both, so this suite does not break when that lands.
+ * The same-origin `Origin` header is what passes the provider's CSRF check,
+ * which accepts a same-origin `Origin` / `Referer` or a signed double-submit
+ * token and never treats a missing `Origin` as a pass.
  */
 export async function login(username = USERNAME, password = PASSWORD) {
 	const res = await fetch(`${PROVIDER_URL}/session/login`, {
@@ -165,14 +156,13 @@ export async function exchangeCode({ code, verifier, clientId = CLIENT_ID }) {
 /**
  * POST /oauth/token, grant_type=refresh_token.
  *
- * `resource` is passed by default and that matters: RFC 8707 §2.2 has the
- * client repeat it on refresh, and the provider takes it literally — omit it
- * and the refreshed access token falls back to `aud: <client_id>`, which the
- * resource server then rejects. The suite pins both branches.
+ * `resource` is sent by default: RFC 8707 §2.2 has the client repeat it on
+ * refresh, and without it the refreshed access token falls back to
+ * `aud: <client_id>`, which the resource server rejects. The suite pins both
+ * branches.
  *
- * Pass `resource: null` to omit the parameter. Not `undefined`: a destructuring
- * default fires on an explicit `undefined`, so that would silently send the
- * default and test the opposite of what it looks like.
+ * Pass `resource: null` to omit the parameter. `undefined` would not omit it:
+ * a destructuring default fires on an explicit `undefined`.
  */
 export async function refresh({ refreshToken, clientId = CLIENT_ID, resource = AUDIENCE }) {
 	const body = { grant_type: 'refresh_token', client_id: clientId, refresh_token: refreshToken };
@@ -229,18 +219,16 @@ export async function introspect(accessToken, token = accessToken) {
  * POST /verify on auth.policy-verifier.
  *
  * Invariant: the defaults here and authorize()'s default scope are two
- * spellings of ONE value. The verifier derives the scope it demands as
- * `{action}:{resourceType}` (auth.policy-verifier#117: `project:1` has
- * resource type `project`), so `resource = 'project:1', action = 'read'`
- * demands exactly the `read:project` that authorize() requests by default.
- * Change either default without the other and every happy-path assertion
- * flips. Derivation-rule owner: auth.policy-verifier
- * (ResourceActionScopeRuleCollector); see docs/claims-contract.md.
+ * spellings of one value. The verifier derives the scope it demands as
+ * `{action}:{resourceType}` (ResourceActionScopeRuleCollector; see
+ * docs/claims-contract.md), and `project:1` has resource type `project`, so
+ * `resource = 'project:1', action = 'read'` demands exactly the `read:project`
+ * that authorize() requests by default. Change either default without the
+ * other and every happy-path assertion flips.
  *
- * `resource` here is the verifier's POST /verify body field — a dot-notation
- * resource string — NOT authorize()'s `resource` (the RFC 8707 indicator URI
- * that becomes `aud`). Same word, two protocols; both mirror their wire
- * fields exactly, so neither is renamed.
+ * `resource` here is the verifier's body field, a dot-notation resource
+ * string, not authorize()'s RFC 8707 indicator URI. Both mirror their wire
+ * fields, so neither is renamed.
  */
 export async function verify({ token, resource = 'project:1', action = 'read' }) {
 	const res = await fetch(`${VERIFIER_URL}/verify`, {

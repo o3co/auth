@@ -4,14 +4,14 @@
  * Prerequisites: docker compose up (policy-verifier + provider + redis)
  * Verifier: http://localhost:3097
  *
- * The allow/deny decisions below run against tokens auth.provider actually
- * minted through `login -> /authorize (PKCE) -> /token`. That is the point of
- * o3co/auth#3: a self-signed token proves the verifier can validate a
- * signature, not that the two components agree on what a token looks like.
+ * The allow/deny decisions below run against tokens auth.provider minted
+ * through `login -> /authorize (PKCE) -> /token`: a self-signed token proves
+ * the verifier can validate a signature, not that the two components agree on
+ * what a token looks like.
  *
- * Hand-signed tokens remain only where the provider cannot be made to produce
- * the input — a wrong issuer, a wrong audience, an expired token, a scopeless
- * token. Those are envelope negatives, and each says so.
+ * Tokens are hand-signed only where the provider cannot be made to produce the
+ * input (a wrong issuer, a wrong audience, an expired token, a scopeless
+ * token). Those are envelope negatives, and each says so.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import jwt from 'jsonwebtoken';
@@ -42,10 +42,10 @@ function signToken(claims, options = {}) {
 /** Grant carrying `read:project`. */
 let projectGrant;
 /**
- * Grant carrying only `read:project.member` — used for the deny case, and for
- * the nested-resource allow. The scope name tracks the resource type the
- * verifier derives: auth.policy-verifier#117 stopped rewriting the `.`
- * separator to `_`, so `project:1.member:2` now derives `project.member`.
+ * Grant carrying only `read:project.member`, for the deny case and the
+ * nested-resource allow. The scope name tracks the resource type the verifier
+ * derives, which keeps the `.` separator: `project:1.member:2` derives
+ * `project.member`.
  */
 let memberGrant;
 
@@ -90,20 +90,17 @@ describe('ABAC: only access tokens are decision inputs', () => {
 	 * key. Only the access token is a bearer credential for a resource server:
 	 * an id_token is an assertion about an authentication event delivered to
 	 * the client, and a refresh token is a credential for the token endpoint.
-	 * Presenting either at /verify must fail.
 	 *
-	 * NOTE: the `typ` header is the ONLY thing that distinguishes them. There
-	 * is no claim-level check — the verifier pins `at+jwt` and rejects
-	 * everything else before any rule runs. So if auth.provider ever changes
-	 * the `typ` it stamps, or the verifier ever relaxes the pin, these two
-	 * tests are what catch it. Do not weaken them into "some 4xx".
+	 * The `typ` header is the only thing that tells them apart: there is no
+	 * claim-level check, and the verifier pins `at+jwt` and rejects everything
+	 * else before any rule runs. These two tests catch a change to the `typ`
+	 * the provider stamps or a relaxed pin; do not weaken them into "some 4xx".
 	 */
 
 	it('rejects the id_token from the same grant', async () => {
 		const res = await verify({ token: projectGrant.id_token });
-		// `JWT` since auth.provider#394 (v0.10.0). What keeps an id_token out of
-		// `/verify` is being disjoint from `at+jwt`, which the standard value
-		// satisfies identically — so the refusal below is unchanged.
+		// The standard `JWT`: being disjoint from `at+jwt` is what keeps an
+		// id_token out of `/verify`.
 		expect(decodeJwt(projectGrant.id_token).header.typ).toBe('JWT');
 		expect(res.status).toBe(401);
 		expect(res.body.decision).toBe('deny');
@@ -175,8 +172,8 @@ describe('ABAC: RFC 9068 envelope validation', () => {
 
 	it('denies a scopeless token against a scope-only pipeline', async () => {
 		// The provider will not mint a scopeless token for this client, so the
-		// input is hand-signed. auth.policy-verifier#104: an empty rule set
-		// denies rather than allowing by vacuous truth.
+		// input is hand-signed. An empty rule set denies rather than allowing by
+		// vacuous truth.
 		const res = await verify({ token: signToken({ sub: 'user-e2e-1' }) });
 		expect(res.status).toBe(403);
 		expect(res.body.decision).toBe('deny');

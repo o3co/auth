@@ -1,18 +1,17 @@
 # User fixture for the cross-component E2E, consumed by the standalone
-# template's YAML user repository (CLIENT_USER_TYPE=yaml, which
-# auth.provider#728 renames to STANDALONE_ADAPTERS_USER_REPOSITORY; the compose
-# sets both).
+# template's YAML user repository (CLIENT_USER_TYPE=yaml, or
+# STANDALONE_ADAPTERS_USER_REPOSITORY=yaml under its new name; the compose sets
+# both).
 #
 # The template defaults `repositories.user.type` to "http", which needs a
 # separate identity service to answer CLIENT_USER_AUTHENTICATE_URL. The E2E has
 # no such service, so it switches the adapter to "yaml" and ships the directory
 # here — `POST /session/login` then authenticates against this file.
 #
-# `emailVerified: true` (camelCase — the `User` field name; the OIDC claim it
-# surfaces as is `email_verified`) is what satisfies the provider's
-# `requireEmailVerified` gate at `/authorize` (auth.provider#297/#320). The
-# compose turns that gate ON so the happy path proves the gate passes a
-# verified user rather than proving nothing because the gate was off.
+# `emailVerified: true` (the `User` field name; the OIDC claim it surfaces as
+# is `email_verified`) is what satisfies the provider's `requireEmailVerified`
+# gate at `/authorize`. The compose turns that gate on so the happy path
+# proves the gate passes a verified user.
 #
 # The password is stored in plain text on purpose: the in-memory repository
 # accepts either a bcrypt hash or a literal, and a literal keeps the fixture

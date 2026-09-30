@@ -17,21 +17,18 @@ FROM node-base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # The provider's own pnpm-workspace.yaml, not one written here: it carries the
 # `overrides` and `onlyBuiltDependencies` the provider's lockfile was resolved
-# with. A workspace file without them had pnpm re-resolve the lockfile — its
-# security overrides dropped, bcrypt's install script skipped — so the image was
-# not built from the dependency set the provider ships. The file also matches
-# projects the image does not copy (create-app and tools/* today): they are
-# just not workspace projects here. Both installs are --frozen-lockfile, which
-# accepts that and refuses any other departure from the lockfile. If the
-# provider adds `patchedDependencies` (a patches/ directory) or a
-# .pnpmfile.cjs, the frozen install fails, loudly, until this file copies them
-# too; it uses neither today.
+# with, and without them pnpm re-resolves the lockfile, dropping the security
+# overrides and skipping bcrypt's install script. Projects it matches that the
+# image does not copy (create-app, tools/*) are just not workspace projects
+# here; both installs are --frozen-lockfile, which accepts that and refuses any
+# other departure from the lockfile. A `patchedDependencies` entry (a patches/
+# directory) or a .pnpmfile.cjs would fail the frozen install until this file
+# copies it too; the provider uses neither.
 
-# Hand-maintained: one line per packages/* in auth.provider, here AND in the
+# Hand-maintained: one line per packages/* in auth.provider, here and in the
 # runtime stage below. A package missing from this list is absent from the
-# workspace pnpm installs, so its build finds no node_modules (#432 added
-# device-grant and this file did not follow; auth.provider#593 added
-# federation-grants, a template dependency, and the install failed outright).
+# workspace pnpm installs, so its build finds no node_modules, and a missing
+# template dependency fails the install outright.
 COPY packages/core/package.json packages/core/package.json
 COPY packages/device-grant/package.json packages/device-grant/package.json
 COPY packages/dpop/package.json packages/dpop/package.json
@@ -62,14 +59,13 @@ COPY templates/standalone/ templates/standalone/
 RUN pnpm -r run build
 
 # Every package's config/ directory and the template's, gathered by glob into
-# one staging tree the runtime stage copies whole — unlike the package lists
-# above, not hand-maintained. auth.provider#728 moves each package's defaults
+# one staging tree the runtime stage copies whole; unlike the package lists
+# above, not hand-maintained. The provider is moving each package's defaults
 # to its own config/reference.conf, layered for the modules the composition
-# loads, so the image needs every such directory, including ones added after
-# this file was last edited. A COPY per directory cannot follow that: COPY of
-# a path that does not exist fails the build, and the suite runs against
-# provider revisions from before and after each directory appears. The loop
-# takes whichever exist.
+# loads, so the image needs every such directory. A COPY of a directory that
+# does not exist fails the build, and the suite runs against provider
+# revisions before and after each directory appears, so the loop takes
+# whichever exist.
 RUN mkdir -p /tmp/config-staging \
  && for dir in packages/*/config templates/standalone/config; do \
       if [ -d "$dir" ]; then \

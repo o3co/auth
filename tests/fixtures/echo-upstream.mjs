@@ -1,20 +1,19 @@
-// Disposable E2E fixture: the upstream behind the auth.proxy services that
-// forward to it (tests/docker-compose.yml). It answers every request with the
-// headers the proxy forwarded, so a suite can assert on exactly what reached
-// the upstream — the injected Bearer, or its absence — rather than inferring
-// it from whatever an application upstream happened to do with it. It
-// verifies nothing: a real upstream must still verify every token it is
-// handed (auth.proxy README, "Inbound Authorization headers").
+// Disposable E2E fixture: the upstream behind the auth.proxy services in
+// tests/docker-compose.yml. It answers every request with the headers the
+// proxy forwarded, so a suite asserts on exactly what reached the upstream (the
+// injected Bearer, or its absence). It verifies nothing; a real upstream must
+// verify every token it is handed (auth.proxy README, "Inbound Authorization
+// headers").
 //
 // Headers are reported through `headersDistinct`, as arrays of every value
 // received: `req.headers` keeps only the first of repeated `authorization`
-// headers and discards the rest, which would hide a proxy that forwarded the
-// client's header beside the one it injected.
+// headers, which would hide a proxy that forwarded the client's header beside
+// the one it injected.
 //
 // A request carrying `x-e2e-probe: <id>` is remembered, and `GET /_seen/<id>`
-// answers whether it arrived, so a suite can observe — not infer — that a
-// refused request never reached the upstream. The probe is per request, so
-// suites running in parallel against this one upstream cannot see each other's.
+// answers whether it arrived, so a suite can observe that a refused request
+// never reached the upstream. Probes are per request, so suites running in
+// parallel against this upstream cannot see each other's.
 import { createServer } from 'node:http';
 
 const seen = new Set();
