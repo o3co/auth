@@ -31,6 +31,39 @@ Recorded so the coupling cannot be assumed into existence:
 | `jti` | Stamped on every token (`core/src/grants/token.mts`) and used provider-side for replay detection. The verifier never reads it. |
 | `groups` | Reaches userinfo / id_token only through the scope-gated claim filter (`core/src/grants/claimFilter.mts`, `groups` scope) — it is **not** in the access token. The verifier's group-style attributes arrive via the `/verify` request `context` through `RequestContextAttributeCollector`: a separate channel with a separate trust boundary (caller-supplied body, not the verified token). |
 
+## Delegated tokens
+
+A delegation grant ([auth.provider#861](https://github.com/o3co/auth.provider/issues/861)) issues tokens in which a client acts for a subject within a range. The provider does not write these claims yet; the verifier reads them already, so this section is the contract the provider's delegation package implements.
+
+| Claim | Provider writes | Verifier reads | Meaning at the boundary |
+| --- | --- | --- | --- |
+| `act` | `act.sub` = the acting client (RFC 8693 §4.1); `sub` stays the subject. | Not by name: a deployment promotes `act.sub` with `PayloadClaimAttributeCollector` (`{ from = "act.sub", to = "actorId" }`) for policies that name the actor. | Who is acting, beside whom for. |
+| `authorization_details` | RFC 9396 entries of the delegation package's one type, each `{ "type": <that type>, "path": "<path>" }`: the range the token may act within. | `DelegationRangeCollector` → `ATTR_DELEGATION_RANGE` (the builtins' own key); `DelegationRangeRuleCollector` emits `WithinDelegationRange` for the requested path `<resource>.<action>` when a token carries an entry of the type. Both are configured with the same `type`. | A delegated token is allowed only what its range **and** the policies allow; a token without an entry of the type is decided by the policies alone. |
+
+**Path grammar.** A path is `(type(:id)?.)*action`:
+
+- `type` and `action` are `[a-z][a-z0-9_]*`;
+- `id` is `[A-Za-z0-9_~-]`, any other character percent-encoded in **upper-case** hex, so each id has one spelling;
+- the last element is the action and carries no id.
+
+**Containment.** An entry contains a path when it is a segment-wise prefix of it: each entry element has the path element's type, and an entry element that names no id contains the same type with any id. Nothing is normalized — both sides are compared as written — and a side outside the grammar contains, and is contained by, nothing. The provider applies the same rule when a pull narrows a grant's range and when a child grant's range must lie within its parent's; the verifier applies it to each request.
+
+Vectors both sides are held to (`auth.policy-verifier`'s `packages/builtins/src/__tests__/delegation/range.test.mts` pins them):
+
+| Entry | Path | Contained |
+| --- | --- | --- |
+| `a:1.b` | `a:1.b:2.c:3.run` | yes |
+| `a:1.b` | `a:1.b.run` | yes |
+| `a.run` | `a:1.run` | yes |
+| `a:1.run` | `a:1.run.more` | yes — a prefix contains what lies under it |
+| `a:1.b:2.run` | `a:1.b:3.run` | no |
+| `a:1.run` | `a.run` | no — an entry that names an id does not contain a path that names none |
+| `a:1.b.c.run` | `a:1.b.run` | no — an entry longer than the path |
+| `a:1.run` | `a:1.read` | no |
+| `doc:x%2Fy.read` | `doc:x/y.read` | no — `/` is outside the grammar; the encoding is part of the id |
+
+**Open, for the provider's package to fix:** the `authorization_details` type value. The verifier takes it as configuration (`type`) and has no default, so it adds no constraint of its own.
+
 ## Executable rows
 
 Several rows are pinned by tests in this repo — read them before weakening a row:
