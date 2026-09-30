@@ -1,5 +1,9 @@
 # E2E test Dockerfile for auth.policy-verifier
-# Based on repos/auth.policy-verifier/Dockerfile with secret mount for GitHub Packages
+# Builds the monorepo from source and runs the templates/standalone entrypoint.
+# Modelled on repos/auth.policy-verifier/templates/standalone/Dockerfile, which
+# builds a scaffolded project instead. The npmrc build secret mounts the host's
+# ~/.npmrc into the pnpm installs without writing it into a layer. Every
+# package resolves from the public npm registry, so an empty file is enough.
 FROM node:24-alpine AS node-base
 
 ENV HOME=/home/node

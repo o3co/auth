@@ -57,7 +57,11 @@ export function decodeJwt(token) {
 	};
 }
 
-/** RFC 7636 S256 pair. The provider MANDATES S256 for public clients. */
+/**
+ * RFC 7636 S256 pair. The provider requires PKCE of every authorization-code
+ * client and accepts only S256 unless the client registration sets
+ * `allowPlainPkce`, which no E2E client does.
+ */
 export function pkce() {
 	const verifier = crypto.randomBytes(32).toString('base64url');
 	const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');

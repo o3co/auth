@@ -1,6 +1,8 @@
 # E2E test Dockerfile for auth.provider
-# Builds the monorepo from source and runs the templates/standalone entrypoint,
-# with secret mount for GitHub Packages (same pattern as policy-verifier.Dockerfile).
+# Builds the monorepo from source and runs the templates/standalone entrypoint.
+# The npmrc build secret mounts the host's ~/.npmrc into the pnpm installs
+# without writing it into a layer. Every package resolves from the public npm
+# registry, so an empty file is enough.
 FROM node:24-alpine AS node-base
 
 ENV HOME=/home/node

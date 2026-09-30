@@ -173,8 +173,9 @@ describe('/authorize admission rules', () => {
 			clientId: THIRD_PARTY_CLIENT_ID,
 			scope: 'read:project',
 		});
-		// The first-party invariant is unconditional, and the refusal is
-		// delivered as a redirect per RFC 6749 §4.1.2.1; no code is minted.
+		// With no consent store configured (this rig's default), `/authorize`
+		// admits only first-party clients. The refusal is delivered as a
+		// redirect per RFC 6749 §4.1.2.1; no code is minted.
 		expect(res.status).toBe(302);
 		expect(res.query.get('error')).toBe('unauthorized_client');
 		expect(res.query.get('code')).toBeNull();

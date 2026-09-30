@@ -1,14 +1,16 @@
 # Client registrations for the cross-component E2E, mounted over the
 # standalone template's `config/clients.yaml` (which ships empty).
 #
-# `firstParty: true` is required for a client to use `/authorize`, with no
-# opt-out. `/authorize` mints a code as soon as the session is authenticated,
-# with no consent step, so the provider admits only clients the operator
-# vouches for.
+# This rig configures no consent store (the template's default, "none"), so
+# `/authorize` admits only clients registered `firstParty: true`, and mints
+# their codes with no consent step. With a consent store, a client that is not
+# first-party would be admitted through the deployment's consent page instead.
 #
-# `tokenEndpointAuthMethod: "none"` makes this a public client, for which the
-# provider mandates PKCE/S256 at `/authorize` regardless of operator config
-# (RFC 9700 §2.1.1), so the suite exercises the strict path.
+# `tokenEndpointAuthMethod: "none"` makes this a public client. The provider
+# requires PKCE of every authorization-code client, public or confidential,
+# and admits only S256 unless the registration sets `allowPlainPkce: true`
+# (auth.provider packages/oauth/src/grants/pkce.mts). No client here sets it,
+# so the suite exercises the strict path.
 #
 # `allowedAudiences` is what lets the RFC 8707 `resource` parameter stamp
 # `aud: https://api.e2e.test` on the access token, the value
@@ -40,10 +42,10 @@ e2e-app:
     - "refresh_token"
     - "session"
 
-# A deliberately unmarked client. `/authorize` must refuse it with
-# `unauthorized_client` — this is the negative half of the first-party
-# invariant, and it is registered here so the suite can prove the refusal
-# rather than assume it.
+# A client not marked first-party. With no consent store, `/authorize` must
+# refuse it with `unauthorized_client`: the negative half of the first-party
+# rule, registered here so the suite can prove the refusal rather than assume
+# it.
 e2e-third-party:
   tokenEndpointAuthMethod: "none"
   firstParty: false

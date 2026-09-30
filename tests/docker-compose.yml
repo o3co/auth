@@ -76,20 +76,20 @@ services:
       # Redis paths.
       - DEPLOYMENT_MODE=multi
       - CORE_DEPLOYMENT_MODE=multi
-      # One ioredis socket per replica backs the refresh-token-family store
-      # and, through standaloneRedisClientsModule, the 4 user-session stores,
-      # the rate limiter and the authorization-code repository. It defaults to
-      # redis://localhost:6379, which is nothing inside the container, so
-      # without this the provider retries a dead socket.
+      # One ioredis socket per replica (standaloneRedisClientsModule) backs
+      # every Redis-backed store the provider composes: the refresh-token
+      # family store, and each store this block switches to Redis. Its URL
+      # defaults to redis://localhost:6379, which is nothing inside the
+      # container, so without this the provider retries a dead socket.
       - REFRESH_TOKEN_FAMILY_STORE_REDIS_URL=redis://redis:6379
       - REDIS_CLIENTS_URL=redis://redis:6379
       # express-session's own store; a separate connection from the shared
       # ioredis socket above, hence a separate URL.
       - SESSION_STORAGE_REDIS_URL=redis://redis:6379
       - SESSION_STORE_STORAGE_REDIS_URL=redis://redis:6379
-      # The four user-session stores (session, RP registry, family index,
-      # federation index) — memory by default, which deployment mode `multi`
-      # refuses.
+      # The user-session stores (session, RP registry, family and federation
+      # indexes) and the subject-revocation pair, switched together: memory by
+      # default, which deployment mode `multi` refuses.
       - USER_SESSION_STORES_ADAPTER=redis
       - STANDALONE_ADAPTERS_USER_SESSION_STORES=redis
       # OAuth-endpoint rate-limit counters — memory by default, likewise
@@ -103,10 +103,11 @@ services:
       - STANDALONE_ADAPTERS_CODE_REPOSITORY=redis
       # Federation token store (upstream IdP tokens per session): memory by
       # default, which deployment mode `multi` refuses because the
-      # standalone's own memory modules declare replica-unsafe state. The
-      # Redis adapter encrypts every envelope and needs its own 32-byte key;
-      # this one is for the disposable E2E rig only, like the session secret
-      # above. The key is not among the renamed settings, so it has one name.
+      # standalone's own memory modules declare replica-unsafe state. In its
+      # default `encryptionMode = "required"` the Redis adapter encrypts every
+      # envelope and needs its own 32-byte key; this one is for the disposable
+      # E2E rig only, like the session secret above. The key is not among the
+      # renamed settings, so it has one name.
       - FEDERATION_TOKEN_STORE_TYPE=redis
       - STANDALONE_ADAPTERS_FEDERATION_TOKEN_STORE=redis
       - REDIS_FEDERATION_TOKEN_STORE_ENCRYPTION_KEY=zeJFqmOncR4DvzI12bGZq4sIGkOKGHuD/ipQ8QZG7F4=

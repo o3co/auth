@@ -172,8 +172,9 @@ describe('ABAC: RFC 9068 envelope validation', () => {
 
 	it('denies a scopeless token against a scope-only pipeline', async () => {
 		// The provider will not mint a scopeless token for this client, so the
-		// input is hand-signed. An empty rule set denies rather than allowing by
-		// vacuous truth.
+		// input is hand-signed. Under the collector's default `scopeless:
+		// "deny"` the scope rule is still emitted and the token fails it, hence
+		// `invalid_scope`, not the `no_applicable_rule` of an empty rule set.
 		const res = await verify({ token: signToken({ sub: 'user-e2e-1' }) });
 		expect(res.status).toBe(403);
 		expect(res.body.decision).toBe('deny');
