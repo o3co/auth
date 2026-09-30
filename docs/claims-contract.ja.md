@@ -38,7 +38,7 @@ RFC 9068 JWT access token。provider は `generateToken`（auth.provider の `pa
 | Claim | Provider が書く | Verifier が読む | 境界での意味 |
 | --- | --- | --- | --- |
 | `act` | `act.sub` = 動いている client（RFC 8693 §4.1）。`sub` は subject のまま。 | 名前では読まない: actor を名指すポリシーのために、デプロイが `PayloadClaimAttributeCollector`（`{ from = "act.sub", to = "actorId" }`）で `act.sub` を昇格する。 | 誰のために、誰が動いているか。 |
-| `authorization_details` | 委任パッケージの 1 つの type の RFC 9396 エントリ。各 `{ "type": <その type>, "path": "<パス>" }` で、token が動ける range。 | `DelegationRangeCollector` → `ATTR_DELEGATION_RANGE`（builtins 自身のキー）。`DelegationRangeRuleCollector` は、token が range を持つとき、リクエストのパス `<resource>.<action>` について `WithinDelegationRange` を生成する。range を持つとは、その type のエントリがあるか、claim が別の形（エントリのオブジェクトのリストでない）で存在することで、後者は何も含まない range である。両者には同じ `type` を設定する。 | 委任 token は range **と** ポリシーの両方が許すものだけを許される。その type のエントリを持たない token はポリシーだけで判定される。 |
+| `authorization_details` | 委任パッケージの 1 つの type の RFC 9396 エントリ。各 `{ "type": <その type>, "path": "<パス>" }` で、token が動ける range。 | `DelegationRangeCollector` → `ATTR_DELEGATION_RANGE`（builtins 自身のキー）。`DelegationRangeRuleCollector` は、token が range を持つとき、リクエストのパス `<resource>.<action>` について `WithinDelegationRange` を生成する。range を持つとは、その type のエントリがあるか、claim が別の形（エントリのオブジェクトのリストでない）で存在することで、後者は何も含まない range である。両者には同じ `type` を設定する。 | 委任 token は range **と** ポリシーの両方が許すものだけを許される。range のルールは絞るだけで、それ自体では許可しないので、ポリシーのルールが 1 つも適用されない委任 token は deny される（既定の `onEmptyRuleSet` では `no_applicable_rule`）。range を持たない token はポリシーだけで判定される。 |
 
 **パスの文法。** パスは `(type(:id)?.)*action`:
 
@@ -63,7 +63,10 @@ RFC 9068 JWT access token。provider は `generateToken`（auth.provider の `pa
 | `doc:x%2Fy.read` | `doc:x/y.read` | いいえ — `/` は文法外。エンコードは id の一部 |
 | `a:%41.run` | `a:A.run` | いいえ — id は書かれたとおりに比較される |
 
-**未決、provider のパッケージが決めるもの:** `authorization_details` の type の値。verifier はそれを設定（`type`）として受け取り、既定値を持たないので、自分からは制約を加えない。
+**未決、provider のパッケージが決めるもの:**
+
+- `authorization_details` の type の値。verifier はそれを設定（`type`）として受け取り、既定値を持たないので、自分からは制約を加えない;
+- 委任 token が `scope` も持つかどうか。range は絞るだけなので、verifier では委任 token にはリクエストを許可するポリシーのルールが要る。`scope` を持たない token を許可できるのは、`scope` を読まないポリシーだけである。
 
 ## 実行可能な行
 

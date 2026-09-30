@@ -38,7 +38,7 @@ A delegation grant ([auth.provider#861](https://github.com/o3co/auth.provider/is
 | Claim | Provider writes | Verifier reads | Meaning at the boundary |
 | --- | --- | --- | --- |
 | `act` | `act.sub` = the acting client (RFC 8693 §4.1); `sub` stays the subject. | Not by name: a deployment promotes `act.sub` with `PayloadClaimAttributeCollector` (`{ from = "act.sub", to = "actorId" }`) for policies that name the actor. | Who is acting, beside whom for. |
-| `authorization_details` | RFC 9396 entries of the delegation package's one type, each `{ "type": <that type>, "path": "<path>" }`: the range the token may act within. | `DelegationRangeCollector` → `ATTR_DELEGATION_RANGE` (the builtins' own key); `DelegationRangeRuleCollector` emits `WithinDelegationRange` for the requested path `<resource>.<action>` when the token carries a range: an entry of the type, or the claim in another shape (not a list of entry objects), which is a range that contains nothing. Both are configured with the same `type`. | A delegated token is allowed only what its range **and** the policies allow; a token without an entry of the type is decided by the policies alone. |
+| `authorization_details` | RFC 9396 entries of the delegation package's one type, each `{ "type": <that type>, "path": "<path>" }`: the range the token may act within. | `DelegationRangeCollector` → `ATTR_DELEGATION_RANGE` (the builtins' own key); `DelegationRangeRuleCollector` emits `WithinDelegationRange` for the requested path `<resource>.<action>` when the token carries a range: an entry of the type, or the claim in another shape (not a list of entry objects), which is a range that contains nothing. Both are configured with the same `type`. | A delegated token is allowed only what its range **and** the policies allow. The range rule restricts and never allows on its own, so a delegated token no policy rule applies to is denied (`no_applicable_rule` under the default `onEmptyRuleSet`). A token without a range is decided by the policies alone. |
 
 **Path grammar.** A path is `(type(:id)?.)*action`:
 
@@ -63,7 +63,10 @@ Vectors both sides are held to (`auth.policy-verifier`'s `packages/builtins/src/
 | `doc:x%2Fy.read` | `doc:x/y.read` | no — `/` is outside the grammar; the encoding is part of the id |
 | `a:%41.run` | `a:A.run` | no — an id is compared as written |
 
-**Open, for the provider's package to fix:** the `authorization_details` type value. The verifier takes it as configuration (`type`) and has no default, so it adds no constraint of its own.
+**Open, for the provider's package to fix:**
+
+- the `authorization_details` type value. The verifier takes it as configuration (`type`) and has no default, so it adds no constraint of its own;
+- whether a delegated token also carries `scope`. The range only narrows, so on the verifier a delegated token needs a policy rule that grants the request; one without `scope` is granted only by a policy that does not read it.
 
 ## Executable rows
 
