@@ -46,7 +46,7 @@ A delegation grant ([auth.provider#861](https://github.com/o3co/auth.provider/is
 - `id` is `[A-Za-z0-9_~-]`, any other character percent-encoded in **upper-case** hex, so each id has one spelling;
 - the last element is the action and carries no id.
 
-**Containment.** An entry contains a path when it is a segment-wise prefix of it: each entry element has the path element's type, and an entry element that names no id contains the same type with any id. Nothing is normalized — both sides are compared as written — and a side outside the grammar contains, and is contained by, nothing. The provider applies the same rule when a pull narrows a grant's range and when a child grant's range must lie within its parent's; the verifier applies it to each request.
+**Containment.** An entry contains a path when it is a segment-wise prefix of it: each entry element has the path element's type, and an entry element that names no id contains the same type with any id. Nothing is normalized — both sides are compared as written — and a side outside the grammar contains, and is contained by, nothing. The provider applies the same rule when a pull narrows a grant's range and when a child grant's range must lie within its parent's; the verifier applies it to each request. The verifier's requested path is the request's resource, then its action; the action must be one action of the grammar, since one of several elements (`report.delete`) would re-split the joined path and read a request on the parent as one on a child.
 
 Vectors both sides are held to (`auth.policy-verifier`'s `packages/builtins/src/__tests__/delegation/range.test.mts` pins them):
 
