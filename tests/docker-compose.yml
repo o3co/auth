@@ -28,10 +28,10 @@ services:
       # ---- Old and new names ---------------------------------------------
       # The provider is moving most of the settings below to new
       # configuration paths, and a variable's name is derived from its path,
-      # so the names change with them. The provider reads the environment only
-      # through `${?VAR}` in its .conf files and ignores a name it does not
-      # read, so a renamed setting left under its old name alone would fall
-      # back to its default silently. This suite runs against the pinned
+      # so the names change with them. The provider reads the variables below
+      # only through `${?VAR}` in its .conf files and ignores a name it does
+      # not read, so a renamed setting left under its old name alone would
+      # fall back to its default silently. This suite runs against the pinned
       # provider and against provider develop (nightly, and on every
       # auth.provider pull request), so each renamed variable is set under
       # both names: the old one, then the new one on the line below it. The
@@ -77,10 +77,11 @@ services:
       - DEPLOYMENT_MODE=multi
       - CORE_DEPLOYMENT_MODE=multi
       # One ioredis socket per replica (standaloneRedisClientsModule) backs
-      # every Redis-backed store the provider composes: the refresh-token
-      # family store, and each store this block switches to Redis. Its URL
-      # defaults to redis://localhost:6379, which is nothing inside the
-      # container, so without this the provider retries a dead socket.
+      # the refresh-token family store, the stores this block switches to
+      # Redis, and those the template already puts there (the access-token
+      # denylist, the replay seen-set). Its URL defaults to
+      # redis://localhost:6379, which is nothing inside the container, so
+      # without this the provider retries a dead socket.
       - REFRESH_TOKEN_FAMILY_STORE_REDIS_URL=redis://redis:6379
       - REDIS_CLIENTS_URL=redis://redis:6379
       # express-session's own store; a separate connection from the shared
@@ -243,8 +244,9 @@ services:
       retries: 10
 
   # ---- auth.proxy against the real provider, beyond uncredentialed validation
-  # The upstream for every service below: it echoes the headers it received,
-  # so the suites assert on what the proxy actually forwarded.
+  # The upstream for every service below: it echoes the `authorization` and
+  # `cookie` headers it received, so the suites assert on what the proxy
+  # actually forwarded (tests/fixtures/echo-upstream.mjs).
   echo-upstream:
     image: node:24-alpine
     command: ["node", "/fixture/echo-upstream.mjs"]

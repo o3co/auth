@@ -6,17 +6,18 @@
 # their codes with no consent step. With a consent store, a client that is not
 # first-party would be admitted through the deployment's consent page instead.
 #
-# `tokenEndpointAuthMethod: "none"` makes this a public client. The provider
-# requires PKCE of every authorization-code client, public or confidential,
-# and admits only S256 unless the registration sets `allowPlainPkce: true`
-# (auth.provider packages/oauth/src/grants/pkce.mts). No client here sets it,
-# so the suite exercises the strict path.
+# `tokenEndpointAuthMethod: "none"` makes this a public client, so the suite
+# calls the token endpoint with `client_id` alone. The provider requires PKCE
+# of every authorization-code client, public or confidential, and admits only
+# S256 unless the registration sets `allowPlainPkce: true` (auth.provider
+# packages/oauth/src/grants/pkce.mts). No client here sets it, so the suite
+# exercises the strict path.
 #
 # `allowedAudiences` is what lets the RFC 8707 `resource` parameter stamp
 # `aud: https://api.e2e.test` on the access token, the value
-# auth.policy-verifier pins via OAUTH_JWT_AUDIENCE. The URL here is the one
-# deliberate second copy of OAUTH_JWT_AUDIENCE: this file is volume-mounted,
-# so compose interpolation cannot reach it.
+# auth.policy-verifier pins via OAUTH_JWT_AUDIENCE. The URL in every
+# `allowedAudiences` here is a deliberate copy of OAUTH_JWT_AUDIENCE: this file
+# is volume-mounted, so compose interpolation cannot reach it.
 #
 # `allowedScopes` is a provider-vocabulary ceiling the provider compares
 # opaquely. The `read:project` / `read:project.member` entries are written in
@@ -97,8 +98,9 @@ e2e-bff:
 # the Basic header end to end. Disposable rig only.
 #
 # `allowedGrantTypes: []` denies every grant: the client only introspects. An
-# absent list would mean no restriction (auth.provider
-# packages/core/src/repositories/types.mts).
+# absent list would admit every grant that does not require an explicit
+# allowlist of its own, with `oauth.requireGrantTypeAllowlist` at its default,
+# off (auth.provider packages/core/src/repositories/allowedGrantTypes.mts).
 e2e-resource-server:
   tokenEndpointAuthMethod: "client_secret_basic"
   clientSecret: "AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0="

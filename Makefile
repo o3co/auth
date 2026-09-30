@@ -47,9 +47,9 @@ export OAUTH_JWT_SECRET := qmV+afsq/SMZ7hPGs9edVQDvPzNmjXemJNjqti181v0=
 
 # The same one-definition rule for the issuer and audience: interpolated into
 # the containers by docker compose and read by the test processes, which pin
-# the claims the provider stamps. The audience appears once more in
-# tests/provider/clients.yaml (`allowedAudiences`), which is volume-mounted and
-# out of interpolation's reach; the comment there names this copy.
+# the claims the provider stamps. The audience appears again in every
+# `allowedAudiences` of tests/provider/clients.yaml, which is volume-mounted
+# and out of interpolation's reach; the comment there names this copy.
 export OAUTH_JWT_ISSUER := https://auth.e2e.test
 export OAUTH_JWT_AUDIENCE := https://api.e2e.test
 

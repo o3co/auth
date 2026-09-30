@@ -1,9 +1,10 @@
 // Disposable E2E fixture: the upstream behind the auth.proxy services in
-// tests/docker-compose.yml. It answers every request with the headers the
-// proxy forwarded, so a suite asserts on exactly what reached the upstream (the
-// injected Bearer, or its absence). It verifies nothing; a real upstream must
-// verify every token it is handed (auth.proxy README, "Inbound Authorization
-// headers").
+// tests/docker-compose.yml. Except on `/_healthcheck` and `/_seen/<id>`
+// (below), it answers with the method, the URL and the `authorization` and
+// `cookie` headers the proxy forwarded, so a suite asserts on exactly what
+// reached the upstream (the injected Bearer, or its absence). It verifies
+// nothing; a real upstream must verify every token it is handed (auth.proxy
+// README, "Inbound Authorization headers").
 //
 // Headers are reported through `headersDistinct`, as arrays of every value
 // received: `req.headers` keeps only the first of repeated `authorization`

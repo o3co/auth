@@ -10,8 +10,9 @@
 #
 # `emailVerified: true` (the `User` field name; the OIDC claim it surfaces as
 # is `email_verified`) is what satisfies the provider's `requireEmailVerified`
-# gate at `/authorize`. The compose turns that gate on so the happy path
-# proves the gate passes a verified user.
+# gate, which this suite passes at `/authorize` and on the `session` grant.
+# The compose turns that gate on so the happy path proves the gate passes a
+# verified user.
 #
 # The password is stored in plain text on purpose: the in-memory repository
 # accepts either a bcrypt hash or a literal, and a literal keeps the fixture

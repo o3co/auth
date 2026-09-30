@@ -10,8 +10,8 @@
  * what a token looks like.
  *
  * Tokens are hand-signed only where the provider cannot be made to produce the
- * input (a wrong issuer, a wrong audience, an expired token, a scopeless
- * token). Those are envelope negatives, and each says so.
+ * input (a wrong issuer, audience or `typ`, an expired token, a scopeless
+ * token), all in the envelope-validation block below.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import jwt from 'jsonwebtoken';
@@ -91,16 +91,17 @@ describe('ABAC: only access tokens are decision inputs', () => {
 	 * an id_token is an assertion about an authentication event delivered to
 	 * the client, and a refresh token is a credential for the token endpoint.
 	 *
-	 * The `typ` header is the only thing that tells them apart: there is no
-	 * claim-level check, and the verifier pins `at+jwt` and rejects everything
-	 * else before any rule runs. These two tests catch a change to the `typ`
-	 * the provider stamps or a relaxed pin; do not weaken them into "some 4xx".
+	 * The verifier pins `at+jwt` and rejects every other `typ` before any rule
+	 * runs. The refresh token carries the access token's iss, aud, sub and
+	 * scope, so `typ` is all that keeps it out, and only its test catches a
+	 * relaxed pin. The id_token is also refused for its audience (the client
+	 * id). Both tests pin the `typ` the provider stamps; do not weaken them
+	 * into "some 4xx".
 	 */
 
 	it('rejects the id_token from the same grant', async () => {
 		const res = await verify({ token: projectGrant.id_token });
-		// The standard `JWT`: being disjoint from `at+jwt` is what keeps an
-		// id_token out of `/verify`.
+		// The standard `JWT`, disjoint from `at+jwt`.
 		expect(decodeJwt(projectGrant.id_token).header.typ).toBe('JWT');
 		expect(res.status).toBe(401);
 		expect(res.body.decision).toBe('deny');
@@ -172,9 +173,10 @@ describe('ABAC: RFC 9068 envelope validation', () => {
 
 	it('denies a scopeless token against a scope-only pipeline', async () => {
 		// The provider will not mint a scopeless token for this client, so the
-		// input is hand-signed. Under the collector's default `scopeless:
-		// "deny"` the scope rule is still emitted and the token fails it, hence
-		// `invalid_scope`, not the `no_applicable_rule` of an empty rule set.
+		// input is hand-signed. Under ResourceActionScopeRuleCollector's
+		// default `scopeless: "deny"` the scope rule is still emitted and the
+		// token fails it, hence `invalid_scope`, not the `no_applicable_rule`
+		// of an empty rule set.
 		const res = await verify({ token: signToken({ sub: 'user-e2e-1' }) });
 		expect(res.status).toBe(403);
 		expect(res.body.decision).toBe('deny');

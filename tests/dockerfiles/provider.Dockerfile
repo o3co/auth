@@ -18,14 +18,17 @@ FROM node-base AS deps
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # The provider's own pnpm-workspace.yaml, not one written here: it carries the
-# `overrides` and `onlyBuiltDependencies` the provider's lockfile was resolved
-# with, and without them pnpm re-resolves the lockfile, dropping the security
-# overrides and skipping bcrypt's install script. Projects it matches that the
-# image does not copy (create-app, tools/*) are just not workspace projects
-# here; both installs are --frozen-lockfile, which accepts that and refuses any
-# other departure from the lockfile. A `patchedDependencies` entry (a patches/
-# directory) or a .pnpmfile.cjs would fail the frozen install until this file
-# copies it too; the provider uses neither.
+# security `overrides` the provider's lockfile was resolved with, and the
+# `onlyBuiltDependencies` that lets bcrypt run its install script. Both
+# installs are --frozen-lockfile, which refuses a workspace file whose
+# `overrides` differ from the lockfile's; `onlyBuiltDependencies` is not in
+# the lockfile, so without it the install succeeds and skips bcrypt's install
+# script. Projects it matches that the image does not copy (create-app,
+# tools/*) are just not workspace projects here, which a frozen install
+# accepts; it refuses any other departure from the lockfile. A
+# `patchedDependencies` entry (a patches/ directory) or a .pnpmfile.cjs would
+# fail the frozen install until this file copies it too; the provider uses
+# neither.
 
 # Hand-maintained: one line per packages/* in auth.provider, here and in the
 # runtime stage below. A package missing from this list is absent from the

@@ -1,9 +1,10 @@
 # E2E test Dockerfile for auth.policy-verifier
 # Builds the monorepo from source and runs the templates/standalone entrypoint.
-# Modelled on repos/auth.policy-verifier/templates/standalone/Dockerfile, which
-# builds a scaffolded project instead. The npmrc build secret mounts the host's
-# ~/.npmrc into the pnpm installs without writing it into a layer. Every
-# package resolves from the public npm registry, so an empty file is enough.
+# The verifier's own templates/standalone/Dockerfile builds a scaffolded
+# project instead, which installs the published packages. The npmrc build
+# secret mounts the host's ~/.npmrc into the pnpm installs without writing it
+# into a layer. Every package resolves from the public npm registry, so an
+# empty file is enough.
 FROM node:24-alpine AS node-base
 
 ENV HOME=/home/node
@@ -19,15 +20,15 @@ FROM node-base AS deps
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # The verifier's own pnpm-workspace.yaml, not one written here: it carries the
-# security `overrides` the verifier's lockfile was resolved with, which pnpm
-# drops when it re-resolves the lockfile for a workspace file without them.
-# Projects it matches that the image does not copy (create-app, tests/*, and
-# packages/cedar and packages/cedar-wasm, which it does not build) are just
-# not workspace projects here; both installs are --frozen-lockfile, which
-# accepts that and refuses any other departure from the lockfile. A
-# `patchedDependencies` entry (a patches/ directory) or a .pnpmfile.cjs would
-# fail the frozen install until this file copies it too; the verifier uses
-# neither.
+# security `overrides` the verifier's lockfile was resolved with. Both
+# installs are --frozen-lockfile, which refuses a workspace file whose
+# `overrides` differ from the lockfile's. Projects it matches that the image
+# does not copy (create-app, tests/*, and packages/cedar and
+# packages/cedar-wasm, which it does not build) are just not workspace
+# projects here, which a frozen install accepts; it refuses any other
+# departure from the lockfile. A `patchedDependencies` entry (a patches/
+# directory) or a .pnpmfile.cjs would fail the frozen install until this file
+# copies it too; the verifier uses neither.
 COPY packages/core/package.json packages/core/package.json
 COPY packages/builtins/package.json packages/builtins/package.json
 COPY packages/server/package.json packages/server/package.json

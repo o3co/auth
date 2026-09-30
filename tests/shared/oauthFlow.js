@@ -71,9 +71,10 @@ export function pkce() {
 /**
  * POST /session/login — returns the session cookie header value.
  *
- * The same-origin `Origin` header is what passes the provider's CSRF check,
- * which accepts a same-origin `Origin` / `Referer` or a signed double-submit
- * token and never treats a missing `Origin` as a pass.
+ * The same-origin `Origin` header is what passes the provider's CSRF check.
+ * The check accepts a same-origin or trusted `Origin` (falling back to
+ * `Referer`), and a request carrying neither must present a signed
+ * double-submit token.
  */
 export async function login(username = USERNAME, password = PASSWORD) {
 	const res = await fetch(`${PROVIDER_URL}/session/login`, {

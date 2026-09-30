@@ -84,13 +84,15 @@ describe('Real grant path: login -> /authorize (PKCE) -> /token', () => {
 	});
 
 	it('gives the id_token and refresh token their own `typ`', () => {
-		// The verifier's only discriminator between token kinds is this header
-		// (see the negative tests in tests/abac). Pinning all three means a
+		// The verifier pins `at+jwt` (see the negative tests in tests/abac). The
+		// refresh token carries the access token's iss, aud, sub and scope, so
+		// this header is all that keeps it out. Pinning all three means a
 		// provider-side change to any of them fails on this repo's CI rather
 		// than silently widening what /verify accepts.
 		//
-		// The id_token carries the standard `JWT`: what keeps it out of
-		// `/verify` is being disjoint from RFC 9068's `at+jwt`.
+		// The id_token carries the standard `JWT`, disjoint from RFC 9068's
+		// `at+jwt`; its `aud` (the client id, below) keeps it out of `/verify`
+		// as well.
 		expect(decodeJwt(grant.id_token).header.typ).toBe('JWT');
 		expect(decodeJwt(grant.refresh_token).header.typ).toBe('rt+jwt');
 	});
