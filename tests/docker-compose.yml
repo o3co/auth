@@ -34,10 +34,9 @@ services:
       # fall back to its default silently. This suite runs against the pinned
       # provider and against provider develop (nightly, and on every
       # auth.provider pull request), so each renamed variable is set under
-      # both names: the old one, then the new one on the line below it. The
-      # two lines of a pair carry the same value; change them together. Both
-      # names are set until PROVIDER_REV pins a provider that reads only the
-      # new ones.
+      # every name it has had, oldest first, one per line. The lines of a
+      # group carry the same value; change them together. Every name is set
+      # until PROVIDER_REV pins a provider that reads only the newest one.
 
       # The provider signs with EdDSA by default and has no HS256 fallback, so
       # the algorithm is named explicitly. The E2E uses HS256 because the
@@ -93,15 +92,18 @@ services:
       # default, which deployment mode `multi` refuses.
       - USER_SESSION_STORES_ADAPTER=redis
       - STANDALONE_ADAPTERS_USER_SESSION_STORES=redis
+      - ADAPTERS_USER_SESSION_STORES=redis
       # OAuth-endpoint rate-limit counters — memory by default, likewise
       # refused under multi.
       - RATE_LIMITER_ADAPTER=redis
       - STANDALONE_ADAPTERS_RATE_LIMITER=redis
+      - ADAPTERS_RATE_LIMITER=redis
       # Authorization-code repository. Already the template default, pinned
       # here because the whole point of the suite is that codes round-trip
       # through Redis rather than a per-process Map.
       - OAUTH_CODE_ADAPTER=redis
       - STANDALONE_ADAPTERS_CODE_REPOSITORY=redis
+      - ADAPTERS_CODE_REPOSITORY=redis
       # Federation token store (upstream IdP tokens per session): memory by
       # default, which deployment mode `multi` refuses because the
       # standalone's own memory modules declare replica-unsafe state. In its
@@ -111,6 +113,7 @@ services:
       # renamed settings, so it has one name.
       - FEDERATION_TOKEN_STORE_TYPE=redis
       - STANDALONE_ADAPTERS_FEDERATION_TOKEN_STORE=redis
+      - ADAPTERS_FEDERATION_TOKEN_STORE=redis
       - REDIS_FEDERATION_TOKEN_STORE_ENCRYPTION_KEY=zeJFqmOncR4DvzI12bGZq4sIGkOKGHuD/ipQ8QZG7F4=
 
       # ---- Repositories --------------------------------------------------
@@ -119,6 +122,7 @@ services:
       # YAML directory and mounts users.yaml above.
       - CLIENT_USER_TYPE=yaml
       - STANDALONE_ADAPTERS_USER_REPOSITORY=yaml
+      - ADAPTERS_USER_REPOSITORY=yaml
 
       # ---- Issuance policy the suite means to exercise --------------------
       # RFC 8707 resource indicators are opt-in (secure-by-default). The E2E
