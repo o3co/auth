@@ -91,8 +91,8 @@ describe('Real grant path: login -> /authorize (PKCE) -> /token', () => {
 		// than silently widening what /verify accepts.
 		//
 		// The id_token carries the standard `JWT`, disjoint from RFC 9068's
-		// `at+jwt`; its `aud` (the client id, below) keeps it out of `/verify`
-		// as well.
+		// `at+jwt`; its `aud` (the client id, below) would keep it out of
+		// `/verify` as well.
 		expect(decodeJwt(grant.id_token).header.typ).toBe('JWT');
 		expect(decodeJwt(grant.refresh_token).header.typ).toBe('rt+jwt');
 	});

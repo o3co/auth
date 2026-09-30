@@ -10,8 +10,9 @@
  * what a token looks like.
  *
  * Tokens are hand-signed only where the provider cannot be made to produce the
- * input (a wrong issuer, audience or `typ`, an expired token, a scopeless
- * token), all in the envelope-validation block below.
+ * input — an access token wrong in one respect alone (its issuer, audience or
+ * `typ`), expired, or without scope — all in the envelope-validation block
+ * below.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import jwt from 'jsonwebtoken';
@@ -93,10 +94,11 @@ describe('ABAC: only access tokens are decision inputs', () => {
 	 *
 	 * The verifier pins `at+jwt` and rejects every other `typ` before any rule
 	 * runs. The refresh token carries the access token's iss, aud, sub and
-	 * scope, so `typ` is all that keeps it out, and only its test catches a
-	 * relaxed pin. The id_token is also refused for its audience (the client
-	 * id). Both tests pin the `typ` the provider stamps; do not weaken them
-	 * into "some 4xx".
+	 * scope, so `typ` is all that keeps it out, and of these two tests only its
+	 * one catches a relaxed pin (as does the hand-signed `typ` case below). The
+	 * id_token would also be refused for its audience (the client id). Both
+	 * tests pin the `typ` the provider stamps; do not weaken them into "some
+	 * 4xx".
 	 */
 
 	it('rejects the id_token from the same grant', async () => {
