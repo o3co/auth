@@ -2,7 +2,7 @@
 
 The JWT contract between [auth.provider](https://github.com/o3co/auth.provider) and [auth.policy-verifier](https://github.com/o3co/auth.policy-verifier) has two halves. The **signature half** — algorithm and key-distribution symmetry (HS256/RS256/ES256/EdDSA, shared secret or JWKS URI) — is deployment configuration, documented in each repo's README. This document records the **claim half**: which claims cross the boundary, who writes them, who reads them, and what each side means by them.
 
-Each repo's vocabulary is absolute only within that repo: the provider writes claims in OAuth/OIDC vocabulary (RFC-grounded), and the verifier translates them into its own ABAC attribute vocabulary at its edge. The table below is that correspondence. It consolidates mapping statements that already exist as comments scattered across both repos and the E2E suites here — an index over those statements, not a second source of truth. Where a row and the cited code disagree, the code and its tests win and this table has drifted.
+Each repo's vocabulary is absolute only within that repo: the provider writes claims in OAuth/OIDC vocabulary (RFC-grounded), and the verifier translates them into its own ABAC attribute vocabulary at its edge. The table below is that correspondence. It consolidates mapping statements that already exist as comments scattered across both repos and the E2E suites here — an index over those statements, not a second source of truth. Where a row and the cited code disagree, the code and its tests win and this table has drifted. The exception is [Delegated tokens](#delegated-tokens), which states the provider's side before that side exists.
 
 ## The boundary object
 
@@ -31,6 +31,45 @@ Recorded so the coupling cannot be assumed into existence:
 | `jti` | Stamped on every token (`core/src/grants/token.mts`) and used provider-side for replay detection. The verifier never reads it. |
 | `groups` | Reaches userinfo / id_token only through the scope-gated claim filter (`core/src/grants/claimFilter.mts`, `groups` scope) — it is **not** in the access token. The verifier's group-style attributes arrive via the `/verify` request `context` through `RequestContextAttributeCollector`: a separate channel with a separate trust boundary (caller-supplied body, not the verified token). |
 
+## Delegated tokens
+
+A delegation grant ([auth.provider#861](https://github.com/o3co/auth.provider/issues/861)) issues tokens in which a client acts for a subject within a range. The provider does not write these claims yet; the verifier's `develop` reads `authorization_details` already (unreleased after v0.15.0), so this section is the contract the provider's delegation package implements. Unlike the tables above, it is not an index over code on both sides: until the provider's side exists, this section is where that side is stated. The verifier's side is pinned by its vectors test (below), not by an E2E here; a disagreement between this section and that test is fixed in both in one change. Once the provider implements it, the section becomes an index like the rest, citing the provider's code.
+
+| Claim | Provider writes | Verifier reads | Meaning at the boundary |
+| --- | --- | --- | --- |
+| `act` | `act.sub` = the acting client (RFC 8693 §4.1); `sub` stays the subject. | Not by name: a deployment promotes `act.sub` with `PayloadClaimAttributeCollector` (`{ from = "act.sub", to = "actorId" }`) for policies that name the actor. | Who is acting, and for whom. |
+| `authorization_details` | RFC 9396 entries of the delegation package's one type, each `{ "type": <that type>, "path": "<path>" }`: the range the token may act within. | `DelegationRangeCollector` → `ATTR_DELEGATION_RANGE` (the builtins' own key, in auth.policy-verifier's `packages/builtins/src/keys.mts`); `DelegationRangeRuleCollector` emits `WithinDelegationRange` for the requested path `<resource>.<action>` when the token carries a range: an entry of the type, or the claim in another shape (not a list of entry objects), which is a range that contains nothing. Both are configured with the same `type` (and `claim`, if overridden). | A delegated token is allowed only what its range **and** the policies allow. The range rule restricts and never allows on its own, so a delegated token no policy rule applies to goes to `onEmptyRuleSet`: denied (`no_applicable_rule`) by default; under `"allow"`, allowed when its range contains the request. A token without a range is decided by the policies alone. |
+
+**Path grammar.** A path is `(type(:id)?.)*action`:
+
+- `type` and `action` are `[a-z][a-z0-9_]*`;
+- `id` is one or more of `[A-Za-z0-9_~-]`, any other character percent-encoded in **upper-case** hex. An id is compared as written, so `%41` and `A` are two ids: the issuer and the resource must encode alike;
+- the last element is the action and carries no id. In an entry it may be a type the range stops at (`project:p1.report`); an entry cannot end in `type:id`, so a range over everything under `project:p1` names what lies under it.
+
+**Containment.** An entry contains a path when it is a segment-wise prefix of it: each entry element has the path element's type, and an entry element that names no id contains the same type with any id. Nothing is normalized — both sides are compared as written — and a side outside the grammar contains, and is contained by, nothing. The provider applies the same rule when a pull narrows a grant's range, and checks a child grant's entries against the prefix its parent names segment by segment in the same way; the verifier applies it to each request. An entry's last element is compared as a type even when it names an action, so `a:1.run` contains `a:1.run.more`: keep action names apart from type names. The verifier's requested path is the request's resource, then its action. The resource is the string the caller sent, whatever resource parser the deployment configures, and its parent chain is the caller's claim: a deployment whose policies rely on the chain confirms it against its own store. The action must be one action of the grammar, since one of several elements (`report.delete`) would re-split the joined path and read a request on the parent as one on a child.
+
+Vectors both sides are held to (`auth.policy-verifier`'s `packages/builtins/src/__tests__/delegation/range.test.mts` pins them):
+
+| Entry | Path | Contained |
+| --- | --- | --- |
+| `a:1.b` | `a:1.b:2.c:3.run` | yes |
+| `a:1.b` | `a:1.b.run` | yes |
+| `a.run` | `a:1.run` | yes |
+| `a:1.run` | `a:1.run.more` | yes — a prefix contains what lies under it |
+| `a:1.b:2.run` | `a:1.b:3.run` | no |
+| `a:1.run` | `a.run` | no — an entry that names an id does not contain a path that names none |
+| `a:1.b.c.run` | `a:1.b.run` | no — an entry longer than the path |
+| `a:1.run` | `a:1.read` | no |
+| `doc:x%2Fy.read` | `doc:x/y.read` | no — `/` is outside the grammar; the encoding is part of the id |
+| `a:%41.run` | `a:A.run` | no — an id is compared as written |
+
+**Open, for the provider's package to fix:**
+
+- the `authorization_details` type value. The verifier takes it as configuration (`type`) and has no default, so it adds no constraint of its own;
+- whether a delegated token also carries `scope`. The range only narrows, so under the default `onEmptyRuleSet` the verifier needs a policy rule that grants the request; a token without `scope` is granted only by a policy that does not read it;
+- the claim that carries the grant id. The verifier does not read it;
+- the containment rule is an extension point on the provider; the verifier implements only the rule above, so a deployment that replaces the provider's rule replaces `DelegationRangeRuleCollector` too.
+
 ## Executable rows
 
 Several rows are pinned by tests in this repo — read them before weakening a row:
@@ -39,6 +78,8 @@ Several rows are pinned by tests in this repo — read them before weakening a r
 - `scope` is a string, not an array: `tests/token-flow/index.test.js` — "a `scopes` array would silently authorize nothing" (the drift [o3co/auth#3](https://github.com/o3co/auth/issues/3) called out).
 - `aud` via the RFC 8707 `resource` parameter: `tests/token-flow/index.test.js` + `tests/provider/clients.yaml` (`allowedAudiences`).
 - `sub` travels intact: `tests/abac/index.test.js` (provider `sub` → `/verify` `subject`).
+
+Pinned outside this repo: the delegation range grammar and containment vectors, by auth.policy-verifier's `packages/builtins/src/__tests__/delegation/range.test.mts`. There is no E2E pin here until the provider writes the claims.
 
 ## Change protocol
 
