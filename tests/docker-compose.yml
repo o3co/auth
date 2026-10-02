@@ -66,6 +66,10 @@ services:
       # __Host- prefixed default requires secure=true; plain-HTTP E2E needs both overrides
       - SESSION_NAME=auth.session
       - SESSION_STORE_NAME=auth.session
+      # The suite exercises token issuance and ABAC with password logins
+      # only, so MFA stays off. The template's switch is the only place that
+      # turns it on; a written `mfa.mode` that contradicts it is refused.
+      - MFA_MODE=off
 
       # ---- Redis-backed state -------------------------------------------
       # Deployment mode `multi` makes the provider itself audit this block:
