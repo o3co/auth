@@ -102,6 +102,11 @@ services:
       - RATE_LIMITER_ADAPTER=redis
       - STANDALONE_ADAPTERS_RATE_LIMITER=redis
       - ADAPTERS_RATE_LIMITER=redis
+      # The counter behind /session/login's own attempt limit, which no rate
+      # limiter covers: memory by default, which deployment mode `multi`
+      # refuses. The Redis counter needs `maxmemory-policy noeviction`, the
+      # redis image's default. A new selection, so it has one name.
+      - ADAPTERS_ATTEMPT_COUNTER=redis
       # Authorization-code repository. Already the template default, pinned
       # here because the whole point of the suite is that codes round-trip
       # through Redis rather than a per-process Map.
