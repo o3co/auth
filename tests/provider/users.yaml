@@ -1,12 +1,12 @@
 # User fixture for the cross-component E2E, consumed by the standalone
-# template's YAML user repository (CLIENT_USER_TYPE=yaml, or
-# STANDALONE_ADAPTERS_USER_REPOSITORY=yaml under its new name; the compose sets
-# both).
+# template's YAML user repository (ADAPTERS_USER_REPOSITORY=yaml in the
+# compose).
 #
-# The template defaults `repositories.user.type` to "http", which needs a
-# separate identity service to answer CLIENT_USER_AUTHENTICATE_URL. The E2E has
-# no such service, so it switches the adapter to "yaml" and ships the directory
-# here — `POST /session/login` then authenticates against this file.
+# The template defaults `adapters.userRepository` to "http", which needs a
+# separate identity service to answer REPOSITORIES_USER_HTTP_AUTHENTICATE_URL.
+# The E2E has no such service, so it switches the adapter to "yaml" and ships
+# the directory here — `POST /session/login` then authenticates against this
+# file.
 #
 # `emailVerified: true` (the `User` field name; the OIDC claim it surfaces as
 # is `email_verified`) is what satisfies the provider's `requireEmailVerified`
