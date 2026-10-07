@@ -109,6 +109,9 @@ export async function login(username = USERNAME, password = PASSWORD) {
  * assert on the error branch as well as the success one — /authorize signals
  * refusal by redirecting to the client's registered redirect_uri with an
  * `error` query parameter (RFC 6749 §4.1.2.1), not by returning 4xx.
+ *
+ * Pass `resource: null` to omit the parameter. `undefined` would not omit it:
+ * a destructuring default fires on an explicit `undefined`.
  */
 export async function authorize({
 	cookie,
@@ -135,7 +138,7 @@ export async function authorize({
 		resource,
 	};
 	for (const [k, v] of Object.entries(params)) {
-		if (v !== undefined) url.searchParams.set(k, v);
+		if (v !== undefined && v !== null) url.searchParams.set(k, v);
 	}
 	const res = await fetch(url, { headers: { cookie }, redirect: 'manual' });
 	const location = res.headers.get('location');
@@ -161,10 +164,10 @@ export async function exchangeCode({ code, verifier, clientId = CLIENT_ID }) {
 /**
  * POST /oauth/token, grant_type=refresh_token.
  *
- * `resource` is sent by default: RFC 8707 §2.2 has the client repeat it on
- * refresh, and without it the refreshed access token falls back to
- * `aud: <client_id>`, which the resource server rejects. The suite pins both
- * branches.
+ * `resource` is sent by default. On refresh the presented refresh token's
+ * audience is the ceiling and the default (RFC 8707 §2.2): a refresh without
+ * `resource` keeps it, and a `resource` outside it is refused. The suite pins
+ * both branches.
  *
  * Pass `resource: null` to omit the parameter. `undefined` would not omit it:
  * a destructuring default fires on an explicit `undefined`.

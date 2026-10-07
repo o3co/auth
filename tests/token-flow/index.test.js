@@ -151,18 +151,30 @@ describe('Real grant path: refresh rotation and replay', () => {
 		expect(replay.body.error_description).toBe('replay_detected');
 	}, 30_000);
 
-	it('drops the audience when `resource` is omitted on refresh', async () => {
+	it('keeps the audience when `resource` is omitted on refresh', async () => {
 		const fresh = await codeFlow({ cookie });
 		expect(decodeJwt(fresh.access_token).payload.aud).toBe(AUDIENCE);
 
-		// RFC 8707 §2.2 has the client repeat `resource` on refresh, and the
-		// provider takes that literally: omitting it falls back to the client
-		// id. The refreshed token is valid and unusable at the resource server;
-		// if the provider starts carrying the audience forward, this test fails
-		// and says the contract changed.
+		// The presented refresh token's audience is the default on refresh
+		// (RFC 8707 §2.2): without `resource`, the new access token and the
+		// rotated refresh token carry it.
 		const noResource = await refresh({ refreshToken: fresh.refresh_token, resource: null });
 		expect(noResource.status).toBe(200);
-		expect(decodeJwt(noResource.body.access_token).payload.aud).toBe(CLIENT_ID);
+		expect(decodeJwt(noResource.body.access_token).payload.aud).toBe(AUDIENCE);
+		expect(decodeJwt(noResource.body.refresh_token).payload.aud).toBe(AUDIENCE);
+	}, 30_000);
+
+	it('refuses a refresh `resource` outside the presented token\'s audience', async () => {
+		// Issued without `resource`, so its audience is the client id.
+		const fresh = await codeFlow({ cookie, resource: null });
+		expect(decodeJwt(fresh.access_token).payload.aud).toBe(CLIENT_ID);
+
+		// The presented token's audience is also the ceiling: a `resource` the
+		// client's `allowedAudiences` lists is refused when the token does not
+		// name it.
+		const widened = await refresh({ refreshToken: fresh.refresh_token });
+		expect(widened.status).toBe(400);
+		expect(widened.body.error).toBe('invalid_target');
 	}, 30_000);
 });
 

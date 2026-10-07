@@ -15,7 +15,7 @@
  * forward to tests/fixtures/echo-upstream.mjs.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { AUDIENCE, CLIENT_ID, codeFlow, decodeJwt, introspect, login, refresh } from '../shared/oauthFlow.js';
+import { AUDIENCE, CLIENT_ID, codeFlow, decodeJwt, introspect, login } from '../shared/oauthFlow.js';
 
 const CREDENTIALED_PROXY = 'http://localhost:3092';
 const MISCONFIGURED_PROXY = 'http://localhost:3091';
@@ -30,10 +30,9 @@ async function send(origin, token) {
 /** A provider-issued access token for the audience `e2e-resource-server` admits. */
 let inAudience;
 /**
- * A provider-issued access token for an audience it does NOT admit: the
- * refresh grant without `resource` stamps `aud: <client_id>` (pinned in
- * index.test.js), here `e2e-app` — valid, unexpired, simply not for this
- * resource server.
+ * A provider-issued access token for an audience it does NOT admit: a code
+ * flow without `resource` stamps `aud: <client_id>`, here `e2e-app` — valid,
+ * unexpired, simply not for this resource server.
  */
 let outOfAudience;
 
@@ -41,10 +40,7 @@ beforeAll(async () => {
 	const session = await login();
 	expect(session.status).toBe(200);
 	inAudience = (await codeFlow({ cookie: session.cookie })).access_token;
-	const other = await codeFlow({ cookie: session.cookie });
-	const refreshed = await refresh({ refreshToken: other.refresh_token, resource: null });
-	expect(refreshed.status).toBe(200);
-	outOfAudience = refreshed.body.access_token;
+	outOfAudience = (await codeFlow({ cookie: session.cookie, resource: null })).access_token;
 }, 30_000);
 
 describe('Validation mode with client credentials (CLIENT_ID / CLIENT_SECRET)', () => {
