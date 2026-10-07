@@ -172,8 +172,14 @@ jobs:
             printf '%s' "$rows"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Docker Compose builds the images with the classic builder, not Bake.
+      # Bake refuses to read a secret file outside the working directory
+      # unless `--allow fs.read=<path>` grants it, and Compose passes that
+      # grant for build contexts only, never for the ~/.npmrc secret. The
+      # classic builder reads only the files the compose file declares.
       - name: Run E2E suite
         env:
+          COMPOSE_BAKE: "false"
           PROVIDER_SHA: ${{ steps.revs.outputs.provider }}
           PROXY_SHA: ${{ steps.revs.outputs.proxy }}
           VERIFIER_SHA: ${{ steps.revs.outputs.verifier }}
