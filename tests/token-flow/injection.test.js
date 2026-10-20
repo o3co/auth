@@ -18,6 +18,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AUDIENCE, ISSUER, PROVIDER_URL, decodeJwt, introspect, login } from '../shared/oauthFlow.js';
@@ -31,16 +32,35 @@ const BFF_SCOPE = 'read:project';
 const compose = fileURLToPath(new URL('../docker-compose.yml', import.meta.url));
 
 /**
+ * What a browser page served from the injection proxy's origin sends with its
+ * own requests. INJECTION_PROXY is the injection proxy's
+ * INJECTION_PUBLIC_ORIGIN in tests/docker-compose.yml.
+ */
+const SAME_ORIGIN = { origin: INJECTION_PROXY, 'sec-fetch-site': 'same-origin' };
+
+/**
+ * Whether the auth.proxy this run built gates its session cache on the
+ * request being same-origin: a proxy that does reads INJECTION_PUBLIC_ORIGIN
+ * in its config/application.conf. `make setup` checks the proxy out under
+ * repos/, and the images are built from that checkout.
+ */
+const proxyGatesSessionCache = readFileSync(
+	fileURLToPath(new URL('../../repos/auth.proxy/config/application.conf', import.meta.url)),
+	'utf8',
+).includes('INJECTION_PUBLIC_ORIGIN');
+
+/**
  * One request through a proxy. Returns the status, the parsed body, and the
  * response headers; on a forwarded request the body is the echo upstream's
  * report of what it received.
  */
-async function send(origin, { cookie, authorization, probe, path = '/resource' } = {}) {
+async function send(origin, { cookie, authorization, probe, headers = {}, path = '/resource' } = {}) {
 	const res = await fetch(`${origin}${path}`, {
 		headers: {
 			...(cookie !== undefined ? { cookie } : {}),
 			...(authorization !== undefined ? { authorization } : {}),
 			...(probe !== undefined ? { 'x-e2e-probe': probe } : {}),
+			...headers,
 		},
 	});
 	return { status: res.status, headers: res.headers, body: await res.json().catch(() => null) };
@@ -127,14 +147,58 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 	});
 
 	it('re-injects the cached token for the same session rather than minting another', async () => {
-		// README "Cache behavior": a hit injects the cached Bearer. Two requests
-		// on one cookie, well inside the 60s-minus-5s default TTL, carry the
-		// identical provider-issued token.
-		const first = await send(INJECTION_PROXY, { cookie });
-		const second = await send(INJECTION_PROXY, { cookie });
+		// README "Cache behavior": a hit injects the cached Bearer. Requests on
+		// one cookie, well inside the 60s-minus-5s default TTL, carry the
+		// identical provider-issued token. Each shows it is same-origin, as a
+		// browser's does: the proxy answers only such a request from its cache.
+		// The third shows it the other admitted way, with no Origin.
+		const first = await send(INJECTION_PROXY, { cookie, headers: { origin: INJECTION_PROXY } });
+		const second = await send(INJECTION_PROXY, { cookie, headers: { origin: INJECTION_PROXY } });
+		const third = await send(INJECTION_PROXY, { cookie, headers: { 'sec-fetch-site': 'same-origin' } });
 		expect(first.status).toBe(200);
 		expect(second.status).toBe(200);
+		expect(third.status).toBe(200);
+		bearerOf(onlyAuthorization(first.body));
 		expect(second.body.authorization).toEqual(first.body.authorization);
+		expect(third.body.authorization).toEqual(first.body.authorization);
+	});
+
+	// A cache hit never reaches the provider, which holds the session grant to
+	// its own same-origin check; so a request that does not show it is
+	// same-origin asks the provider itself, and its grant is not cached. The
+	// provider pinned here answers it, so what is asserted is a fresh token,
+	// not the cached one, and a cache the request left as it was.
+	describe.skipIf(!proxyGatesSessionCache)('a session-cookie request that does not show it is same-origin', () => {
+		it.each([
+			{ label: 'a foreign Origin', headers: { origin: 'https://elsewhere.example' } },
+			{ label: 'Sec-Fetch-Site: cross-site', headers: { 'sec-fetch-site': 'cross-site' } },
+			{
+				label: "the proxy's own Origin with Sec-Fetch-Site: cross-site",
+				headers: { origin: INJECTION_PROXY, 'sec-fetch-site': 'cross-site' },
+			},
+		])('is not answered from the cache: $label', async ({ headers }) => {
+			const warm = await send(INJECTION_PROXY, { cookie, headers: SAME_ORIGIN });
+			expect(warm.status).toBe(200);
+			const cached = bearerOf(onlyAuthorization(warm.body));
+			const hit = await send(INJECTION_PROXY, { cookie, headers: SAME_ORIGIN });
+			expect(bearerOf(onlyAuthorization(hit.body))).toBe(cached);
+
+			const res = await send(INJECTION_PROXY, { cookie, headers });
+			expect(res.status).toBe(200);
+			expect(reachedUpstream(res.body)).toBe(true);
+			const minted = bearerOf(onlyAuthorization(res.body));
+			// A token the provider minted for this request: another jti, for the
+			// same user and client.
+			expect(minted).not.toBe(cached);
+			const { payload } = decodeJwt(minted);
+			expect(payload.jti).not.toBe(decodeJwt(cached).payload.jti);
+			expect(payload.sub).toBe('user-e2e-1');
+			expect(payload.azp).toBe(BFF_CLIENT_ID);
+
+			// Its grant did not replace the cached one.
+			const after = await send(INJECTION_PROXY, { cookie, headers: SAME_ORIGIN });
+			expect(bearerOf(onlyAuthorization(after.body))).toBe(cached);
+		});
 	});
 
 	it('forwards a request without the session cookie unchanged, with no Bearer', async () => {
