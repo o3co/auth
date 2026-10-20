@@ -18,7 +18,6 @@
  */
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AUDIENCE, ISSUER, PROVIDER_URL, decodeJwt, introspect, login } from '../shared/oauthFlow.js';
@@ -37,17 +36,6 @@ const compose = fileURLToPath(new URL('../docker-compose.yml', import.meta.url))
  * INJECTION_PUBLIC_ORIGIN in tests/docker-compose.yml.
  */
 const SAME_ORIGIN = { origin: INJECTION_PROXY, 'sec-fetch-site': 'same-origin' };
-
-/**
- * Whether the auth.proxy this run built gates its session cache on the
- * request being same-origin: a proxy that does reads INJECTION_PUBLIC_ORIGIN
- * in its config/application.conf. `make setup` checks the proxy out under
- * repos/, and the images are built from that checkout.
- */
-const proxyGatesSessionCache = readFileSync(
-	fileURLToPath(new URL('../../repos/auth.proxy/config/application.conf', import.meta.url)),
-	'utf8',
-).includes('INJECTION_PUBLIC_ORIGIN');
 
 /**
  * One request through a proxy. Returns the status, the parsed body, and the
@@ -168,7 +156,7 @@ describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issue
 	// same-origin asks the provider itself, and its grant is not cached. The
 	// provider pinned here answers it, so what is asserted is a fresh token,
 	// not the cached one, and a cache the request left as it was.
-	describe.skipIf(!proxyGatesSessionCache)('a session-cookie request that does not show it is same-origin', () => {
+	describe('a session-cookie request that does not show it is same-origin', () => {
 		it.each([
 			{ label: 'a foreign Origin', headers: { origin: 'https://elsewhere.example' } },
 			{ label: 'Sec-Fetch-Site: cross-site', headers: { 'sec-fetch-site': 'cross-site' } },
