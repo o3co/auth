@@ -24,8 +24,9 @@ RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc \
 
 ADD config ./config
 ADD src ./src
-ADD tsconfig.json ./
+ADD tsconfig.json tsconfig.build.json ./
 
+# tsconfig.build.json leaves the tests out of dist/.
 RUN pnpm run build
 
 ##############################################
