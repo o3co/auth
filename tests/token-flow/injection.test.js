@@ -27,6 +27,17 @@ const STRIP_PROXY = 'http://localhost:3093';
 /** INJECTION_CLIENT_ID / INJECTION_SCOPE in tests/docker-compose.yml. */
 const BFF_CLIENT_ID = 'e2e-bff';
 const BFF_SCOPE = 'read:project';
+/** INJECTION_SESSION_COOKIE_NAME in tests/docker-compose.yml. */
+const SESSION_COOKIE_NAME = 'auth.session';
+
+/**
+ * The Cookie header the upstream receives for `header`: every pair but the
+ * session cookie's, or `null` when none is left.
+ */
+function withoutSessionCookie(header) {
+	const kept = header.split('; ').filter((pair) => pair.split('=')[0] !== SESSION_COOKIE_NAME);
+	return kept.length === 0 ? null : [kept.join('; ')];
+}
 
 const compose = fileURLToPath(new URL('../docker-compose.yml', import.meta.url));
 
@@ -92,14 +103,17 @@ beforeAll(async () => {
 
 describe('Injection mode (AUTH_MODE=injection): session cookie -> provider-issued Bearer', () => {
 	it('injects a token the provider minted for the signed-in user through the session grant', async () => {
-		const res = await send(INJECTION_PROXY, { cookie, path: '/resource?x=1' });
+		const sent = `${cookie}; theme=dark`;
+		const res = await send(INJECTION_PROXY, { cookie: sent, path: '/resource?x=1' });
 		expect(res.status).toBe(200);
 		expect(reachedUpstream(res.body)).toBe(true);
 		expect(res.body.url).toBe('/resource?x=1');
-		// The Cookie header goes upstream as sent, session cookie included:
-		// auth.proxy narrows only its provider call to the session cookie
-		// (README "Cookie forwarding"); stripping cookies is not its contract.
-		expect(res.body.cookie).toEqual([cookie]);
+		// The session cookie stays at the proxy: the upstream receives the
+		// minted Bearer and every other cookie, never the credential that
+		// mints it (auth.proxy README "Cookie forwarding").
+		expect(sent).toContain(`${SESSION_COOKIE_NAME}=`);
+		expect(res.body.cookie).toEqual(withoutSessionCookie(sent));
+		expect(res.body.cookie[0]).toContain('theme=dark');
 
 		const token = bearerOf(onlyAuthorization(res.body));
 		const { header, payload } = decodeJwt(token);
@@ -282,7 +296,7 @@ describe('Injection mode with INJECTION_STRIP_INBOUND_AUTHORIZATION=true', () =>
 	it('still injects the provider-issued Bearer for a valid session cookie', async () => {
 		const res = await send(STRIP_PROXY, { cookie, authorization: 'Bearer client-supplied' });
 		expect(res.status).toBe(200);
-		expect(res.body.cookie).toEqual([cookie]);
+		expect(res.body.cookie).toEqual(withoutSessionCookie(cookie));
 		const { payload } = decodeJwt(bearerOf(onlyAuthorization(res.body)));
 		expect(payload.sub).toBe('user-e2e-1');
 		expect(payload.azp).toBe(BFF_CLIENT_ID);

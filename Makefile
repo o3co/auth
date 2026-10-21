@@ -1,6 +1,6 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
 PROVIDER_REV := 5708b53e2843db65b2a4b2d1de025776be5f6ceb
-PROXY_REV := 97a4c572acea4a1c5ba716dc722fa8329d6df1be
+PROXY_REV := 4e1393f5e5eba555c855ea661fbef389adb578d6
 VERIFIER_REV := 4a29275b4f3947164b27a8bb9572ef96fb76c1b3
 
 define clone_or_pull
@@ -53,12 +53,16 @@ export OAUTH_JWT_SECRET := qmV+afsq/SMZ7hPGs9edVQDvPzNmjXemJNjqti181v0=
 export OAUTH_JWT_ISSUER := https://auth.e2e.test
 export OAUTH_JWT_AUDIENCE := https://api.e2e.test
 
+# Every run starts from a stack with no state: a failed run stops before the
+# last `down`, and a stack left up keeps its redis, whose rate-limit and
+# attempt counters then refuse the next run's logins with 429.
 .PHONY: test-e2e
 test-e2e: build
+	docker compose -f tests/docker-compose.yml down -v --remove-orphans
 	docker compose -f tests/docker-compose.yml up -d --build --wait
 	cd tests/token-flow && pnpm install --frozen-lockfile && pnpm vitest run
 	cd tests/abac && pnpm install --frozen-lockfile && pnpm vitest run
-	docker compose -f tests/docker-compose.yml down
+	docker compose -f tests/docker-compose.yml down -v
 
 # Container logs for a failed run. A target rather than a bare `docker compose
 # logs` because compose interpolates OAUTH_JWT_* into the provider service and
