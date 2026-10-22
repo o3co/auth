@@ -2,6 +2,7 @@
   "name": "@o3co/auth-e2e-token-flow",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.29.3",
   "scripts": {
     "test": "vitest run"
   },
