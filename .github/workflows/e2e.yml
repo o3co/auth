@@ -76,9 +76,16 @@ jobs:
       # its pull requests and mirrors the environment steps below (node,
       # corepack and pnpm, the HTTPS rewrite, ~/.npmrc) and the logs and
       # teardown steps at the end. Change them there too.
+      # The minor line the test images use (the node tag in tests/dockerfiles/
+      # and tests/docker-compose.yml), so the test process and the stack run
+      # one Node. check-latest takes the newest patch of that line: without it
+      # setup-node takes any patch the runner image has cached, which can be
+      # one a security release has since replaced. Dependabot moves the image
+      # tags but not this input; move it with them.
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "24.22"
+          check-latest: true
 
       - name: Enable pnpm via corepack
         run: |

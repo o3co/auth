@@ -3,7 +3,7 @@
 # The npmrc build secret mounts the host's ~/.npmrc into the pnpm installs
 # without writing it into a layer. Every package resolves from the public npm
 # registry, so an empty file is enough.
-FROM node:24-alpine AS node-base
+FROM node:24.22-alpine AS node-base
 
 ENV HOME=/home/node
 

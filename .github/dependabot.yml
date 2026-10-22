@@ -1,0 +1,34 @@
+version: 2
+
+updates:
+  # The node base image of the three test images. The suite runs the 24 line,
+  # so a major version is never proposed.
+  - package-ecosystem: docker
+    directory: /tests/dockerfiles
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
+  # The node image of the fixture services in tests/docker-compose.yml, on the
+  # same line as the test images.
+  - package-ecosystem: docker-compose
+    directory: /tests
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
+  # The test clients. Both directories take the same packages, so one pull
+  # request moves both.
+  - package-ecosystem: npm
+    directories:
+      - /tests/abac
+      - /tests/token-flow
+    schedule:
+      interval: weekly
+    groups:
+      e2e-test-dependencies:
+        patterns: ["*"]

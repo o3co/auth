@@ -3,7 +3,7 @@
 # ~/.npmrc into the pnpm install without writing it into a layer. Every package
 # resolves from the public npm registry, so an empty file is enough.
 ##############################################
-FROM node:24-alpine AS base
+FROM node:24.22-alpine AS base
 
 RUN npm install -g corepack --force
 
