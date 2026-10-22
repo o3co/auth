@@ -11,8 +11,9 @@ updates:
       - dependency-name: node
         update-types: ["version-update:semver-major"]
 
-  # The node image of the fixture services in tests/docker-compose.yml, on the
-  # same line as the test images.
+  # Every image tests/docker-compose.yml names directly: node for the fixture
+  # services, on the same line as the test images, and redis. A major version
+  # of either is a deliberate change, never proposed here.
   - package-ecosystem: docker-compose
     directory: /tests
     schedule:
@@ -20,15 +21,23 @@ updates:
     ignore:
       - dependency-name: node
         update-types: ["version-update:semver-major"]
+      - dependency-name: redis
+        update-types: ["version-update:semver-major"]
 
-  # The test clients. Both directories take the same packages, so one pull
-  # request moves both.
+  # The test clients. Both directories take the same packages, so each
+  # package's update is one pull request across both. A release is proposed
+  # only once it has been public for `default-days`, so a compromised release
+  # can be caught upstream before it reaches a lockfile; security updates stay
+  # immediate. Majors stay out of the group, each a deliberate review.
   - package-ecosystem: npm
     directories:
       - /tests/abac
       - /tests/token-flow
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       e2e-test-dependencies:
-        patterns: ["*"]
+        group-by: dependency-name
+        update-types: ["minor", "patch"]

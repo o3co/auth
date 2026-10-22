@@ -78,7 +78,7 @@ jobs:
       # teardown steps at the end. Change them there too.
       # The minor line the test images use (the node tag in tests/dockerfiles/
       # and tests/docker-compose.yml), so the test process and the stack run
-      # one Node. check-latest takes the newest patch of that line: without it
+      # one Node minor line. check-latest takes the newest patch of that line: without it
       # setup-node takes any patch the runner image has cached, which can be
       # one a security release has since replaced. Dependabot moves the image
       # tags but not this input; move it with them.
