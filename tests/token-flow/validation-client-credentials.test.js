@@ -8,14 +8,20 @@
  * Misconfigured proxy: http://localhost:3091 (same client, wrong secret)
  *
  * With CLIENT_ID / CLIENT_SECRET set, the proxy authenticates to
- * `POST /oauth/introspect` with HTTP Basic, and the provider then pins the
- * token's audience to the client's `allowedAudiences ∪ {clientId}` (auth.proxy
- * README, "Introspection client identity"). The uncredentialed `proxy` service
- * in tests/token-flow/index.test.js never reaches that pin. Both proxies here
- * forward to tests/fixtures/echo-upstream.mjs.
+ * `POST /oauth/introspect` with HTTP Basic (auth.proxy README, "Introspection
+ * client identity"), and the provider reports a token active only when its
+ * audience is one of the client's registered audiences or the client's own id.
+ * Both proxies here forward to tests/fixtures/echo-upstream.mjs.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { AUDIENCE, CLIENT_ID, codeFlow, decodeJwt, introspect, login } from '../shared/oauthFlow.js';
+import {
+	AUDIENCE,
+	OTHER_AUDIENCE,
+	codeFlow,
+	decodeJwt,
+	introspect,
+	login,
+} from '../shared/oauthFlow.js';
 
 const CREDENTIALED_PROXY = 'http://localhost:3092';
 const MISCONFIGURED_PROXY = 'http://localhost:3091';
@@ -31,8 +37,8 @@ async function send(origin, token) {
 let inAudience;
 /**
  * A provider-issued access token for an audience it does NOT admit: a code
- * flow without `resource` stamps `aud: <client_id>`, here `e2e-app` — valid,
- * unexpired, simply not for this resource server.
+ * flow asking `resource` for `e2e-app`'s other audience — valid, unexpired,
+ * simply not for this resource server.
  */
 let outOfAudience;
 
@@ -40,7 +46,7 @@ beforeAll(async () => {
 	const session = await login();
 	expect(session.status).toBe(200);
 	inAudience = (await codeFlow({ cookie: session.cookie })).access_token;
-	outOfAudience = (await codeFlow({ cookie: session.cookie, resource: null })).access_token;
+	outOfAudience = (await codeFlow({ cookie: session.cookie, resource: OTHER_AUDIENCE })).access_token;
 }, 30_000);
 
 describe('Validation mode with client credentials (CLIENT_ID / CLIENT_SECRET)', () => {
@@ -53,15 +59,15 @@ describe('Validation mode with client credentials (CLIENT_ID / CLIENT_SECRET)', 
 	});
 
 	it('refuses a valid token for an audience the client does not admit', async () => {
-		// The token itself is good: the provider calls it active when it is its
-		// own credential (no client identified, so no audience pin).
-		expect(decodeJwt(outOfAudience).payload.aud).toBe(CLIENT_ID);
+		// The token itself is good: the provider calls it active for a client
+		// that may see its audience.
+		expect(decodeJwt(outOfAudience).payload.aud).toBe(OTHER_AUDIENCE);
 		const self = await introspect(outOfAudience);
 		expect(self.status).toBe(200);
 		expect(self.body.active).toBe(true);
 
-		// Introspected as `e2e-resource-server`, whose audiences are
-		// {https://api.e2e.test, e2e-resource-server}, it is `active: false`.
+		// Introspected as `e2e-resource-server`, which may see
+		// https://api.e2e.test and its own id, it is `active: false`.
 		const res = await send(CREDENTIALED_PROXY, outOfAudience);
 		expect(res.status).toBe(401);
 		expect(res.body).toEqual({ code: 401, message: 'Invalid Token' });

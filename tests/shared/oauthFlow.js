@@ -10,22 +10,44 @@
  * resolving a module from outside their own tree.
  */
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
-export const PROVIDER_URL = process.env.PROVIDER_URL || 'http://localhost:3099';
 export const PROXY_URL = process.env.PROXY_URL || 'http://localhost:3098';
 export const VERIFIER_URL = process.env.VERIFIER_URL || 'http://localhost:3097';
 
 /**
- * All three must equal the containers' values in tests/docker-compose.yml.
- * They are defined once, in the Makefile (`export OAUTH_JWT_*`), which
+ * Both must equal the containers' values in tests/docker-compose.yml. They
+ * are defined once, in the Makefile (`export OAUTH_JWT_*`), which
  * `make test-e2e` feeds to both compose interpolation and this process, and
- * none has a fallback here: a default would silently drift from compose. The
- * negative ABAC tests mint their own tokens with the secret, so a value that
- * merely looks plausible produces 401s that read like a policy failure.
+ * neither has a fallback here: a default would silently drift from compose.
  */
 export const ISSUER = requireEnv('OAUTH_JWT_ISSUER');
 export const AUDIENCE = requireEnv('OAUTH_JWT_AUDIENCE');
-export const JWT_SECRET = requireEnv('OAUTH_JWT_SECRET');
+/**
+ * Where the suite reaches the provider: its public origin, which is its
+ * issuer. The provider compares a login's `Origin` with it.
+ */
+export const PROVIDER_URL = ISSUER;
+
+/**
+ * The provider's signing key (ES256), read out of the one file that defines
+ * it, the provider's local layer, for the negative cases that sign what the
+ * provider would never issue. Signed with any other key, every such case would
+ * fail as a bad signature that reads like the rejection under test.
+ */
+export const SIGNING_KEY = readFileSync(
+	new URL('../provider/local.conf', import.meta.url),
+	'utf8',
+).match(/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/)[0];
+/**
+ * jsonwebtoken's options for SIGNING_KEY, for one token. The `kid` is
+ * KEYS_SIGNING_KID in tests/docker-compose.yml: the provider verifies a token
+ * by the key its `kid` names. Each token gets a `jti` of its own, as every
+ * access token the provider issues carries one and it refuses one without.
+ */
+export function signing() {
+	return { algorithm: 'ES256', keyid: 'e2e-1', jwtid: crypto.randomBytes(16).toString('base64url') };
+}
 
 function requireEnv(name) {
 	const value = process.env[name];
@@ -37,15 +59,23 @@ function requireEnv(name) {
 	return value;
 }
 
-/** Marked `firstParty: true` in tests/provider/clients.yaml. */
+/** First-party in tests/provider/local.conf. */
 export const CLIENT_ID = 'e2e-app';
-/** Marked `firstParty: false` — /authorize must refuse it. */
+/** Not first-party — /authorize must refuse it. */
 export const THIRD_PARTY_CLIENT_ID = 'e2e-third-party';
 export const REDIRECT_URI = 'http://localhost:9099/callback';
+/**
+ * The second audience `e2e-app` may ask for with `resource`: a token for it is
+ * valid, but not for the resource AUDIENCE names.
+ */
+export const OTHER_AUDIENCE = 'https://other.e2e.test';
+
+/** The provider's session cookie, whose name it fixes. */
+export const SESSION_COOKIE_NAME = 'session';
 
 export const USERNAME = 'e2e-user';
 export const PASSWORD = 'e2e-password';
-/** `emailVerified: false` in tests/provider/users.yaml. */
+/** `email_verified = false` in tests/provider/local.conf. */
 export const UNVERIFIED_USERNAME = 'e2e-unverified';
 
 /** Split a JWT without verifying it — for asserting on the envelope. */
@@ -59,8 +89,7 @@ export function decodeJwt(token) {
 
 /**
  * RFC 7636 S256 pair. The provider requires PKCE of every authorization-code
- * client and accepts only S256 unless the client registration sets
- * `allowPlainPkce`, which no E2E client does.
+ * client and accepts only S256.
  */
 export function pkce() {
 	const verifier = crypto.randomBytes(32).toString('base64url');
@@ -72,9 +101,9 @@ export function pkce() {
  * POST /session/login — returns the session cookie header value.
  *
  * The same-origin `Origin` header is what passes the provider's CSRF check.
- * The check accepts a same-origin or trusted `Origin` (falling back to
- * `Referer`), and a request carrying neither must present a signed
- * double-submit token.
+ * The check accepts an `Origin` (or `Referer`) that is the provider's public
+ * origin, and a request carrying neither must present the double-submit
+ * token.
  */
 export async function login(username = USERNAME, password = PASSWORD) {
 	const res = await fetch(`${PROVIDER_URL}/session/login`, {
@@ -95,9 +124,9 @@ export async function login(username = USERNAME, password = PASSWORD) {
 	// Every caller logs in expecting to get a session. Failing here names the
 	// cause; returning an empty cookie would surface later as an unexplained
 	// "/authorize did not return a code".
-	if (res.status === 200 && !cookie.includes('auth.session=')) {
+	if (res.status === 200 && !cookie.includes(`${SESSION_COOKIE_NAME}=`)) {
 		throw new Error(
-			`login succeeded but no auth.session cookie was readable (got "${cookie}"). ` +
+			`login succeeded but no ${SESSION_COOKIE_NAME} cookie was readable (got "${cookie}"). ` +
 				'If this Node build lacks Headers#getSetCookie, the fallback above did not fire.',
 		);
 	}
@@ -130,11 +159,12 @@ export async function authorize({
 		state,
 		code_challenge: challenge,
 		code_challenge_method: 'S256',
-		// RFC 8707. This is what stamps `aud: https://api.e2e.test` on the
-		// access token — the audience auth.policy-verifier pins. Without it the
-		// provider falls back to the client id and the verifier correctly
-		// rejects the token. Distinct from verify()'s `resource` — the
-		// verifier's dot-notation resource string. Same word, two protocols.
+		// RFC 8707. This narrows the access token's `aud` to the one audience
+		// asked, here `https://api.e2e.test`, the audience
+		// auth.policy-verifier pins. Without it the provider stamps the
+		// client's first registered audience. Distinct from verify()'s
+		// `resource` — the verifier's dot-notation resource string. Same word,
+		// two protocols.
 		resource,
 	};
 	for (const [k, v] of Object.entries(params)) {
@@ -145,20 +175,29 @@ export async function authorize({
 	return { status: res.status, location, query: location ? new URL(location).searchParams : null };
 }
 
-/** POST /oauth/token, grant_type=authorization_code. */
-export async function exchangeCode({ code, verifier, clientId = CLIENT_ID }) {
+/**
+ * POST /oauth/token with a form body, as RFC 6749 §3.2 sends it: the provider
+ * refuses a JSON body at the token endpoint. `headers` go with it, such as a
+ * session cookie and its `Origin`.
+ */
+export async function tokenRequest(params, headers = {}) {
 	const res = await fetch(`${PROVIDER_URL}/oauth/token`, {
 		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({
-			grant_type: 'authorization_code',
-			client_id: clientId,
-			code,
-			redirect_uri: REDIRECT_URI,
-			code_verifier: verifier,
-		}),
+		headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers },
+		body: new URLSearchParams(params),
 	});
 	return { status: res.status, body: await res.json() };
+}
+
+/** POST /oauth/token, grant_type=authorization_code. */
+export function exchangeCode({ code, verifier, clientId = CLIENT_ID }) {
+	return tokenRequest({
+		grant_type: 'authorization_code',
+		client_id: clientId,
+		code,
+		redirect_uri: REDIRECT_URI,
+		code_verifier: verifier,
+	});
 }
 
 /**
@@ -172,15 +211,22 @@ export async function exchangeCode({ code, verifier, clientId = CLIENT_ID }) {
  * Pass `resource: null` to omit the parameter. `undefined` would not omit it:
  * a destructuring default fires on an explicit `undefined`.
  */
-export async function refresh({ refreshToken, clientId = CLIENT_ID, resource = AUDIENCE }) {
-	const body = { grant_type: 'refresh_token', client_id: clientId, refresh_token: refreshToken };
-	if (resource !== null) body.resource = resource;
-	const res = await fetch(`${PROVIDER_URL}/oauth/token`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body),
-	});
-	return { status: res.status, body: await res.json() };
+export function refresh({ refreshToken, clientId = CLIENT_ID, resource = AUDIENCE }) {
+	const params = { grant_type: 'refresh_token', client_id: clientId, refresh_token: refreshToken };
+	if (resource !== null) params.resource = resource;
+	return tokenRequest(params);
+}
+
+/**
+ * POST /oauth/token, grant_type=session: an access token for the user of the
+ * browser session `cookie` names. The provider issues it only on same-origin
+ * evidence, here the `Origin` a page on its public origin sends.
+ */
+export function sessionGrant({ cookie, clientId, scope }) {
+	return tokenRequest(
+		{ grant_type: 'session', client_id: clientId, scope },
+		{ cookie, origin: PROVIDER_URL },
+	);
 }
 
 /**
@@ -214,11 +260,28 @@ export async function userinfo(accessToken) {
 	return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-export async function introspect(accessToken, token = accessToken) {
+/**
+ * `e2e-introspector` in tests/provider/local.conf, which may see every
+ * audience the suite's tokens carry. The provider answers introspection to an
+ * authenticated confidential client alone, and reports a token active only
+ * when its audience is one that client may see: so a token this client finds
+ * inactive is one the provider does not vouch for at all.
+ */
+const INTROSPECTOR_ID = 'e2e-introspector';
+const INTROSPECTOR_SECRET = '//JyDtxoM5OXIQT+9srbxP2x2VXNbPKV5VA+Yf5cjXk=';
+
+/** POST /oauth/introspect (RFC 7662) as INTROSPECTOR_ID, with HTTP Basic. */
+export async function introspect(token) {
+	const basic = Buffer.from(
+		`${encodeURIComponent(INTROSPECTOR_ID)}:${encodeURIComponent(INTROSPECTOR_SECRET)}`,
+	).toString('base64');
 	const res = await fetch(`${PROVIDER_URL}/oauth/introspect`, {
 		method: 'POST',
-		headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-		body: JSON.stringify({ token }),
+		headers: {
+			'content-type': 'application/x-www-form-urlencoded',
+			authorization: `Basic ${basic}`,
+		},
+		body: new URLSearchParams({ token }),
 	});
 	return { status: res.status, body: await res.json() };
 }

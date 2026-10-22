@@ -1,5 +1,5 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
-PROVIDER_REV := 5708b53e2843db65b2a4b2d1de025776be5f6ceb
+PROVIDER_REV := d234b34a408dff1a70ffc4c9644aa3bcae41af87
 PROXY_REV := f18b1e5519ffab1677c6bedbd7e42d238cacd1a5
 VERIFIER_REV := 508566277153dd2a467a8ff3eeeeb1fbd12306d1
 
@@ -32,25 +32,23 @@ status:
 		fi; \
 	done
 
+# auth.provider has no build of its own: its image installs the workspace with
+# the pnpm its `packageManager` names and generates the app the suite runs
+# (tests/dockerfiles/provider.Dockerfile).
 .PHONY: build
 build: setup
-	cd repos/auth.provider && pnpm install --frozen-lockfile && pnpm run build
 	cd repos/auth.proxy && pnpm install --frozen-lockfile && pnpm run build
 	cd repos/auth.policy-verifier && pnpm install --frozen-lockfile && pnpm run build
 
-# The one definition of the shared HS256 secret, interpolated into the
-# containers by docker compose and exported to the test processes, which mint
-# their own tokens with it. A second copy can drift, and every negative case
-# then fails as a 401 that reads like a policy failure. The provider requires
-# at least 32 bytes once decoded.
-export OAUTH_JWT_SECRET := qmV+afsq/SMZ7hPGs9edVQDvPzNmjXemJNjqti181v0=
-
-# The same one-definition rule for the issuer and audience: interpolated into
-# the containers by docker compose and read by the test processes, which pin
-# the claims the provider stamps. The audience appears again in every
-# `allowedAudiences` of tests/provider/clients.yaml, which is volume-mounted
-# and out of interpolation's reach; the comment there names this copy.
-export OAUTH_JWT_ISSUER := https://auth.e2e.test
+# The one definition of the issuer and the audience: interpolated into the
+# containers by docker compose and read by the test processes, which pin the
+# claims the provider stamps. The issuer is also the provider's public origin,
+# where the test processes reach it (the provider service's host port in
+# tests/docker-compose.yml), since the provider requires its issuer on its
+# public origin. The provider's signing key has its one definition in
+# tests/provider/local.conf, and the verifier's public half in
+# tests/abac/application.conf.
+export OAUTH_JWT_ISSUER := http://localhost:3099
 export OAUTH_JWT_AUDIENCE := https://api.e2e.test
 
 # Every run starts from a stack with no state: a failed run stops before the
