@@ -4,8 +4,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import jwt from 'jsonwebtoken';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-	AUDIENCE, CLIENT_ID, ISSUER, JWT_SECRET, PROVIDER_URL,
-	codeFlow, decodeJwt, introspect, login,
+	AUDIENCE, CLIENT_ID, ISSUER, PROVIDER_URL, SIGNING_KEY,
+	codeFlow, decodeJwt, introspect, login, sessionGrant as grantFor, signing,
 } from '../shared/oauthFlow.js';
 
 const API = 'http://localhost:3096';
@@ -15,22 +15,15 @@ const counters = () => fetch(`${API}/calls`).then((r) => r.json());
 const call = (token, origin = API) => fetch(`${origin}/projects/1`, {
 	headers: token ? { authorization: `Bearer ${token}` } : {},
 });
-const sessionGrant = async (cookie) => {
-	const res = await fetch(`${PROVIDER_URL}/oauth/token`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json', cookie, origin: PROVIDER_URL },
-		body: JSON.stringify({ grant_type: 'session', client_id: CLIENT_ID, scope: 'read:project' }),
-	});
-	return { status: res.status, body: await res.json() };
-};
+const sessionGrant = (cookie) => grantFor({ cookie, clientId: CLIENT_ID, scope: 'read:project' });
 
 // Only expiry/proof negatives are hand-signed. The expiry case first warms
 // the cache with its short-lived token; the normal allow/deny service calls
 // use a real login and the provider's code or session grant.
 const negativeToken = (claims) => jwt.sign({
-	iss: ISSUER, aud: AUDIENCE, sub: 'user-e2e-1', azp: CLIENT_ID,
+	iss: ISSUER, aud: AUDIENCE, sub: 'user-e2e-1', client_id: CLIENT_ID,
 	scope: 'read:project', exp: Math.floor(Date.now() / 1000) + 60, ...claims,
-}, JWT_SECRET, { header: { typ: 'at+jwt' } });
+}, SIGNING_KEY, { ...signing(), header: { typ: 'at+jwt' } });
 
 let allowed;
 let denied;
@@ -64,6 +57,11 @@ describe('Internal Bearer adoption: real protected operation', () => {
 	it.each([{ jkt: 'unproven-key' }, { 'x5t#S256': 'unproven-certificate' }])(
 		'refuses a bound token without possession evidence: %j', async (cnf) => {
 			const token = negativeToken({ cnf });
+			// The provider vouches for the token, binding included: what refuses it
+			// below is the Bearer-only boundary, not a token the provider rejects.
+			const checked = await introspect(token);
+			expect(checked.body.active).toBe(true);
+			expect(checked.body.cnf).toEqual(cnf);
 			const before = await counters();
 			expect((await call(token)).status).toBe(401);
 			const beforeProxy = await counters();
@@ -91,18 +89,26 @@ describe('Internal Bearer adoption: real protected operation', () => {
 		const minted = await sessionGrant(session.cookie);
 		expect(minted.status).toBe(200);
 		expect((await call(minted.body.access_token)).status).toBe(200);
-		const { sid } = decodeJwt(minted.body.access_token).payload;
+		// The session's id is the ID token's `sid` (OpenID Connect
+		// Front-Channel and Back-Channel Logout), from a code flow on the same
+		// browser session.
+		const { sid } = decodeJwt((await codeFlow({ cookie: session.cookie })).id_token).payload;
 		expect(typeof sid).toBe('string');
-		// Delete only the tracked UserSession in this disposable compose Redis.
-		// express-session remains intact: this reproduces the independent-store
-		// revocation boundary, not merely logout destroying the browser cookie.
+		// Delete only the session's record in this disposable compose Redis,
+		// under the key the provider's Redis store writes it at. The browser
+		// cookie and the provider's index from it stay intact: this reproduces
+		// the server-side revocation boundary, not merely logout destroying the
+		// browser cookie.
 		const deleted = execFileSync('docker', [
-			'compose', '-f', compose, 'exec', '-T', 'redis', 'redis-cli', '--raw', 'DEL', `ss:us:${sid}`,
+			'compose', '-f', compose, 'exec', '-T', 'redis', 'redis-cli', '--raw', 'DEL',
+			`store:{session-store.sessions:${sid}}:v:record`,
 		], { encoding: 'utf8', timeout: 10_000 }).trim();
 		expect(deleted).toBe('1');
+		// No session to enter: the session grant answers 401, as for a signed-out
+		// browser.
 		const after = await sessionGrant(session.cookie);
-		expect(after.status).toBe(400);
-		expect(after.body.error).toBe('invalid_grant');
+		expect(after.status).toBe(401);
+		expect(after.body.error).toBe('unauthorized');
 		expect(after.body.access_token).toBeUndefined();
 	}, 15_000);
 
@@ -118,7 +124,7 @@ describe('Internal Bearer adoption: real protected operation', () => {
 			method: 'POST', headers: { cookie: session.cookie, origin: PROVIDER_URL },
 		});
 		expect(logout.status).toBe(200);
-		const checked = await introspect(allowed.access_token, token);
+		const checked = await introspect(token);
 		expect(checked.status).toBe(200);
 		expect(checked.body.active).toBe(false);
 		const fresh = await sessionGrant(session.cookie);

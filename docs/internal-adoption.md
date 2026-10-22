@@ -18,14 +18,15 @@ The disposable compose fixture proves:
 - DPoP/mTLS-bound tokens presented on a Bearer-only boundary are rejected; the
   proxy rejects them before forwarding to the protected service.
 - A warm introspection cache cannot forward a token beyond its `exp`.
-- Deleting only a tracked UserSession prevents fresh session-grant issuance even
-  while the separate browser session is retained.
+- Deleting only the provider's session record prevents fresh session-grant
+  issuance even while the browser keeps its session cookie.
 - Local logout invalidates the issued token; the validation proxy refuses its
   previously warm entry after the configured cache TTL.
 - An injection-mode proxy exchanges the browser session cookie at the
   provider's `session` grant and forwards a provider-issued Bearer for that
-  user; without the cookie it mints nothing, a signed-out or untracked session
-  is `401 session_required`, and `stripInboundAuthorization` removes a client's
+  user; without the cookie it mints nothing; a signed-out session, a grant the
+  provider refuses, and a request without same-origin evidence are each
+  `401 session_required`; and `stripInboundAuthorization` removes a client's
   own header (`tests/token-flow/injection.test.js`).
 - A validation proxy authenticating to introspection with client credentials
   forwards tokens for an audience its client is registered for, refuses a
@@ -42,9 +43,10 @@ contract directly; it does not test the Go gRPC/ConnectRPC interceptor.
 
 ## Deployment boundary
 
-The compose uses one provider, Redis-backed state, HS256, and disposable users,
-clients and secrets. Configure the real application's clients, permitted scopes,
-issuer/audience, secrets, HTTPS and secure cookies before sending real traffic.
+The compose uses one provider, Redis-backed state, an ES256 signing key, and
+disposable users, clients and secrets. Configure the real application's
+clients, permitted scopes, issuer/audience, secrets, HTTPS and secure cookies
+before sending real traffic.
 Keep the verifier and the upstream behind the intended enforcement boundary.
 The sample credentials and plain-HTTP settings are only for this test rig.
 
@@ -56,10 +58,10 @@ verification observes expiry, not live session deletion.
 This baseline does not enable end-to-end DPoP/mTLS. Such tokens are refused by
 the default Bearer-only consumers until a trusted possession-verification
 boundary is implemented. Injection mode's external-credential exchange (RFC
-7523 jwt-bearer) is not exercised: the standalone provider wires no
-`assertionVerifier`, so its issuer registry cannot be configured from this
-rig. The exchange, actual Go interceptors, multiple provider or proxy replicas
-and asymmetric JWKS rotation need their own deployment-specific smoke tests
+7523 jwt-bearer) is not exercised: the provider app this rig generates does
+not compose the provider's jwt-bearer grant. The exchange, actual Go
+interceptors, multiple provider or proxy replicas and asymmetric JWKS rotation
+need their own deployment-specific smoke tests
 before enabling those paths. Passing this
 baseline supports internal evaluation of the described topology; it is not a
 release-candidate or production-readiness certification.

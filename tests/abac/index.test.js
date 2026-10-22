@@ -14,15 +14,19 @@
  * `typ`), expired, or without scope — all in the envelope-validation block
  * below.
  */
+import { createPublicKey } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll } from 'vitest';
 import jwt from 'jsonwebtoken';
 import {
 	AUDIENCE,
 	ISSUER,
-	JWT_SECRET,
+	PROVIDER_URL,
+	SIGNING_KEY,
 	codeFlow,
 	decodeJwt,
 	login,
+	signing,
 	verify,
 } from '../shared/oauthFlow.js';
 
@@ -33,7 +37,8 @@ import {
  * rather than to a malformed envelope.
  */
 function signToken(claims, options = {}) {
-	return jwt.sign({ iss: ISSUER, aud: AUDIENCE, ...claims }, JWT_SECRET, {
+	return jwt.sign({ iss: ISSUER, aud: AUDIENCE, ...claims }, SIGNING_KEY, {
+		...signing(),
 		expiresIn: 60,
 		header: { typ: 'at+jwt' },
 		...options,
@@ -56,6 +61,23 @@ beforeAll(async () => {
 	projectGrant = await codeFlow({ cookie: session.cookie, scope: 'openid read:project' });
 	memberGrant = await codeFlow({ cookie: session.cookie, scope: 'openid read:project.member' });
 }, 30_000);
+
+describe('ABAC: the signature half', () => {
+	it("the verifier holds the provider's signing key", async () => {
+		// The verifier's public key is written in its configuration, apart from
+		// the provider's private key. Should they drift, every token fails as a
+		// bad signature that reads like a policy failure; this names the cause.
+		const written = readFileSync(new URL('./application.conf', import.meta.url), 'utf8').match(
+			/-----BEGIN PUBLIC KEY-----[\s\S]+?-----END PUBLIC KEY-----/,
+		)[0];
+		const res = await fetch(`${PROVIDER_URL}/.well-known/jwks.json`);
+		expect(res.status).toBe(200);
+		const published = (await res.json()).keys.map((jwk) =>
+			createPublicKey({ key: jwk, format: 'jwk' }).export({ type: 'spki', format: 'pem' }).trim(),
+		);
+		expect(published).toEqual([written]);
+	});
+});
 
 describe('ABAC: POST /verify with provider-issued access tokens', () => {
 	it('allows when the minted scope matches the resource action', async () => {
@@ -87,18 +109,17 @@ describe('ABAC: POST /verify with provider-issued access tokens', () => {
 
 describe('ABAC: only access tokens are decision inputs', () => {
 	/*
-	 * The provider mints three JWTs from one grant, all signed with the same
-	 * key. Only the access token is a bearer credential for a resource server:
-	 * an id_token is an assertion about an authentication event delivered to
-	 * the client, and a refresh token is a credential for the token endpoint.
+	 * The provider mints three tokens from one grant. Only the access token is
+	 * a bearer credential for a resource server: an id_token is an assertion
+	 * about an authentication event delivered to the client, and a refresh
+	 * token is a credential for the token endpoint.
 	 *
-	 * The verifier pins `at+jwt` and rejects every other `typ` before any rule
-	 * runs. The refresh token carries the access token's iss, aud, sub and
-	 * scope, so `typ` is all that keeps it out, and of these two tests only its
-	 * one catches a relaxed pin (as does the hand-signed `typ` case below). The
-	 * id_token would also be refused for its audience (the client id). Both
-	 * tests pin the `typ` the provider stamps; do not weaken them into "some
-	 * 4xx".
+	 * The id_token is a JWT signed with the access token's key. The verifier
+	 * pins `at+jwt` and rejects every other `typ` before any rule runs; the
+	 * id_token would also be refused for its audience (the client id), so the
+	 * hand-signed `typ` case below is the one that catches a relaxed pin. The
+	 * refresh token is opaque, no JWT at all. Both tests pin the shape the
+	 * provider issues; do not weaken them into "some 4xx".
 	 */
 
 	it('rejects the id_token from the same grant', async () => {
@@ -112,7 +133,7 @@ describe('ABAC: only access tokens are decision inputs', () => {
 
 	it('rejects the refresh token from the same grant', async () => {
 		const res = await verify({ token: projectGrant.refresh_token });
-		expect(decodeJwt(projectGrant.refresh_token).header.typ).toBe('rt+jwt');
+		expect(projectGrant.refresh_token.split('.')).not.toHaveLength(3);
 		expect(res.status).toBe(401);
 		expect(res.body.decision).toBe('deny');
 		expect(res.body.code).toBe('invalid_token');
@@ -145,8 +166,8 @@ describe('ABAC: RFC 9068 envelope validation', () => {
 
 	it('denies a token from a different issuer', async () => {
 		// RFC 9068 §4 — a correctly signed token is still not this
-		// deployment's token. Shared-secret HS256 makes this the only thing
-		// standing between two providers on the same key.
+		// deployment's token: the issuer is what tells two issuers on one key
+		// apart.
 		const res = await verify({
 			token: signToken({ sub: 'user-e2e-1', scope: 'read:project', iss: 'https://evil.e2e.test' }),
 		});

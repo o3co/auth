@@ -6,7 +6,7 @@
 
 ## 境界オブジェクト
 
-RFC 9068 JWT access token。provider は `generateToken`（auth.provider の `packages/core/src/grants/token.mts`）で claim を組み立て、auth.provider の `packages/oauth/src/grants/` 配下の各 grant で刻印する。verifier は `tokenAuthenticator`（auth.policy-verifier の `packages/server/src/jwt/`）で token を認証し、built-in collector（同 repo の `packages/builtins`）が検証済み claim を ABAC attribute（auth.policy-verifier の `packages/core/src/keys.mts` の `ATTR_*` キー）へ翻訳する。
+RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュール（auth.provider の `modules/oauth/tokens/src/module.ts` の `grantClaims`）で、各 grant モジュールがそれを通して発行する grant から書く。verifier は `tokenAuthenticator`（auth.policy-verifier の `packages/server/src/jwt/`）で token を認証し、built-in collector（同 repo の `packages/builtins`）が検証済み claim を ABAC attribute（auth.policy-verifier の `packages/core/src/keys.mts` の `ATTR_*` キー）へ翻訳する。
 
 以下の表の path 規約: *Provider が書く* 列の path は [o3co/auth.provider](https://github.com/o3co/auth.provider)、*Verifier が読む* 列は [o3co/auth.policy-verifier](https://github.com/o3co/auth.policy-verifier)、`tests/…` は本 repo からの相対 path。
 
@@ -14,13 +14,13 @@ RFC 9068 JWT access token。provider は `generateToken`（auth.provider の `pa
 
 | Claim | Provider が書く | Verifier が読む | 境界での意味 |
 | --- | --- | --- | --- |
-| `scope` | 空白区切り文字列（RFC 6749 §3.3）。何も付与されない場合は完全に省略 — `""` にも配列にもしない（`oauth/src/grants/authorization.mts` の CP-12）。上限: client 登録の `allowedScopes`。 | `PayloadScopeCollector` が空白で分割 → `ATTR_SCOPES`。続いて `ResourceActionScopeRuleCollector` が `/verify` リクエストから導出した `{action}:{resourceType}` scope を要求する。 | capability の上限 — セッションが **要求できるもの** であって付与されたものではない（collector の doc comment と [auth.provider#56](https://github.com/o3co/auth.provider/issues/56) 参照）。scope 値の *内部文法* は verifier が所有し、provider は文字列を不透明に比較するだけ。 |
-| `sub` | セッションストア由来の user id — session id ではない（`oauth/src/grants/authorization.mts`）。 | `PayloadSubjectIdCollector` → `ATTR_USER_ID`。`/verify` は wire の `subject` として反響する。 | identity はスタックを通して不変に伝わる。 |
-| `azp` | *認証済み* client id であり、body 生の `client_id` ではない（`oauth/src/grants/authorization.mts` の D-6）。 | `PayloadSubjectIdCollector` → `ATTR_CLIENT_ID`。 | token がどの client 経由で発行されたか。 |
-| `aud` | RFC 8707 `resource` パラメータを audience として反響。refresh（RFC 8707 §2.2）では、提示された refresh token の audience が上限かつ既定値になる。`resource` を付けない refresh はそれを保ち、その外の `resource` は `invalid_target` で拒否される。その内側の `resource` で絞られるのは access token だけで、ローテーション後の refresh token は元の scope と audience を保つ。 | jose 検証でピン — `oauth.jwt.audience` / `OAUTH_JWT_AUDIENCE`。 | token の宛先 resource server。E2E 値 `https://api.e2e.test` が `tests/provider/clients.yaml`（`allowedAudiences`）**と** verifier の env の両方に現れるのはこのため。 |
+| `scope` | 空白区切り文字列（RFC 6749 §3.3）。何も付与されない場合は完全に省略 — `""` にも配列にもしない（`grantClaims`）。上限: client 登録の scope（`client-allowance` セクションの `scopes`）。 | `PayloadScopeCollector` が空白で分割 → `ATTR_SCOPES`。続いて `ResourceActionScopeRuleCollector` が `/verify` リクエストから導出した `{action}:{resourceType}` scope を要求する。 | capability の上限 — セッションが **要求できるもの** であって付与されたものではない（collector の doc comment と [auth.provider#56](https://github.com/o3co/auth.provider/issues/56) 参照）。scope 値の *内部文法* は verifier が所有し、provider は文字列を不透明に比較するだけ。 |
+| `sub` | セッションがログインさせた user の subject（`users` の `subject`）— session id ではない（`grantClaims`）。 | `PayloadSubjectIdCollector` → `ATTR_USER_ID`。`/verify` は wire の `subject` として反響する。 | identity はスタックを通して不変に伝わる。 |
+| `client_id` | token の発行先である *認証済み* client（RFC 9068 §2.2、`grantClaims`）。リクエスト body の `client_id` は読まない。access token に `azp` は入らない。 | 読まれない: `PayloadSubjectIdCollector` が `ATTR_CLIENT_ID` へ持ち上げるのは `azp` だけなので、これらの token から client を読めるルールはない。 | token がどの client 経由で発行されたか。 |
+| `aud` | RFC 8707 `resource` パラメータを audience として反響。ない場合は client 登録の最初の audience（`client-allowance` セクションの `audiences`）。refresh（RFC 8707 §2.2）では、提示された refresh token の audience が上限かつ既定値になる。`resource` を付けない refresh はそれを保ち、その外の `resource` は `invalid_target` で拒否される。その内側の `resource` で絞られるのは access token だけで、ローテーション後の refresh token は元の scope と audience を保つ。 | jose 検証でピン — `oauth.jwt.audience` / `OAUTH_JWT_AUDIENCE`。 | token の宛先 resource server。E2E 値 `https://api.e2e.test` が provider の env（`tests/provider/local.conf` がそれを client の `audiences` に読む）**と** verifier の env の両方に設定されるのはこのため。 |
 | `iss` | デプロイ設定の issuer。必須、リクエスト由来にしない。 | jose 検証でピン — `oauth.jwt.issuer` / `OAUTH_JWT_ISSUER`。 | デプロイの identity。 |
-| `typ`（header） | access token は `at+jwt`（RFC 9068）、refresh token は `rt+jwt`、ID token（wire 名 `id_token`）は auth.provider v0.10.0 以降は標準の `JWT`（それ以前は非標準の `id+jwt` で、`typ` を厳格に検証する外部 RP に弾かれていた）。auth.provider#402（2026-08-30）で移行期間は終了し、現在は `JWT` のみを受理する。 | `oauth.jwt.tokenType`、default `at+jwt`。比較時に `application/` prefix は無視。 | 3 種の token を区別する **唯一の** 判別子 — このピンが、同じ鍵で署名された refresh / id token が `/verify` を通ることを防いでいる。防いでいる実体は **`at+jwt` と互いに素であること** であり、`JWT` は `id+jwt` と同様にこれを満たす。claim レベルの代替チェックは存在しない。 |
-| `exp` / `iat` | 常に刻印（`core/src/grants/token.mts`）。 | 両方必須（`tokenAuthenticator` の必須 claim チェック + 常設の `maxTokenAgeSeconds` 上限）。`exp` のない token は永続 credential として拒否。 | 寿命。verifier は issuer の規律を信頼せず、issuer の `exp` をさらに上限で抑える。 |
+| `typ`（header） | access token は `at+jwt`（RFC 9068）、ID token（wire 名 `id_token`）は標準の `JWT`。refresh token は不透明で、JWT ではない。 | `oauth.jwt.tokenType`、default `at+jwt`。比較時に `application/` prefix は無視。 | 同じ鍵で署名される 2 種の JWT を区別する **唯一の** 判別子 — このピンが、id token が `/verify` を通ることを防いでいる。防いでいる実体は **`at+jwt` と互いに素であること** であり、`JWT` はこれを満たす。claim レベルの代替チェックは存在しない。refresh token は JWT ではないので、JWT 検証はそれを受け取らない。 |
+| `exp` / `iat` | 常に刻印（`modules/oauth/tokens/src/module.ts`）。 | 両方必須（`tokenAuthenticator` の必須 claim チェック + 常設の `maxTokenAgeSeconds` 上限）。`exp` のない token は永続 credential として拒否。 | 寿命。verifier は issuer の規律を信頼せず、issuer の `exp` をさらに上限で抑える。 |
 
 ## 境界を越えない claim
 
@@ -28,8 +28,8 @@ RFC 9068 JWT access token。provider は `generateToken`（auth.provider の `pa
 
 | Claim | 状態 |
 | --- | --- |
-| `jti` | 全 token に刻印（`core/src/grants/token.mts`）、provider 側の replay 検出に使用。verifier は一切読まない。 |
-| `groups` | scope ゲート付き claim filter（`core/src/grants/claimFilter.mts`、`groups` scope）経由で userinfo / id_token にのみ到達 — access token には **入らない**。verifier の group 系 attribute は `/verify` リクエストの `context` から `RequestContextAttributeCollector` 経由で来る: 別チャネル・別信頼境界（呼び出し元供給の body であり、検証済み token ではない）。 |
+| `jti` | 全 access token に刻印（`modules/oauth/tokens/src/module.ts`）。provider はそれのない token を拒否し、token の失効とセッションへの記録にそれを使う。verifier は一切読まない。 |
+| `groups` | `groups` scope（`oidc` の claim 表、`modules/oauth/oidc`）経由で userinfo / id_token にのみ到達 — access token には **入らない**。provider はそこでは予約名として拒否する。verifier の group 系 attribute は `/verify` リクエストの `context` から `RequestContextAttributeCollector` 経由で来る: 別チャネル・別信頼境界（呼び出し元供給の body であり、検証済み token ではない）。 |
 
 ## 委任トークン
 
@@ -74,9 +74,10 @@ RFC 9068 JWT access token。provider は `generateToken`（auth.provider の `pa
 
 いくつかの行は本 repo のテストでピンされている — 行を弱める前に読むこと:
 
-- `typ` 判別: `tests/token-flow/index.test.js` が 3 つの header 全てをピン。`tests/abac/index.test.js`（"only access tokens are decision inputs"）は id_token と refresh token を `/verify` に提示して拒否を要求する。「なにかの 4xx」に弱めないこと。
+- `typ` 判別: `tests/token-flow/index.test.js` が access token と id_token の header、refresh token の不透明な形をピン。`tests/abac/index.test.js`（"only access tokens are decision inputs"）は id_token と refresh token を `/verify` に提示して拒否を要求する。「なにかの 4xx」に弱めないこと。
 - `scope` は文字列であり配列ではない: `tests/token-flow/index.test.js` — "a `scopes` array would silently authorize nothing"（[o3co/auth#3](https://github.com/o3co/auth/issues/3) が指摘したドリフト）。
-- RFC 8707 `resource` パラメータ経由の `aud`: `tests/token-flow/index.test.js` + `tests/provider/clients.yaml`（`allowedAudiences`）。
+- RFC 8707 `resource` パラメータ経由の `aud`: `tests/token-flow/index.test.js` + `tests/provider/local.conf`（各 client の `audiences`）。
+- `azp` ではなく `client_id`: `tests/token-flow/index.test.js` と `tests/token-flow/injection.test.js`。
 - `sub` の不変伝搬: `tests/abac/index.test.js`（provider の `sub` → `/verify` の `subject`）。
 
 本 repo の外でピンされているもの: 委任 range の文法と包含のベクタは、auth.policy-verifier の `packages/builtins/src/__tests__/delegation/range.test.mts` がピンする。provider が claim を書くまで、本 repo の E2E ピンはない。

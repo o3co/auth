@@ -1,0 +1,5 @@
+# The build context is the provider's clone, which may hold a host install.
+# The image installs the workspace itself; a host node_modules copied in would
+# carry the host's platform and pnpm state into it.
+**/node_modules
+.git
