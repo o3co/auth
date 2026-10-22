@@ -190,7 +190,7 @@ services:
       retries: 10
 
   protected-api:
-    image: node:24-alpine
+    image: node:24.22-alpine
     command: ["node", "/fixture/protected-api.mjs"]
     volumes:
       - ./fixtures:/fixture:ro
@@ -235,7 +235,7 @@ services:
   # `cookie` headers it received, so the suites assert on what the proxy
   # actually forwarded (tests/fixtures/echo-upstream.mjs).
   echo-upstream:
-    image: node:24-alpine
+    image: node:24.22-alpine
     command: ["node", "/fixture/echo-upstream.mjs"]
     volumes:
       - ./fixtures:/fixture:ro
