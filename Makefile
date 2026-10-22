@@ -1,6 +1,6 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
 PROVIDER_REV := 5708b53e2843db65b2a4b2d1de025776be5f6ceb
-PROXY_REV := 4e1393f5e5eba555c855ea661fbef389adb578d6
+PROXY_REV := f18b1e5519ffab1677c6bedbd7e42d238cacd1a5
 VERIFIER_REV := 4a29275b4f3947164b27a8bb9572ef96fb76c1b3
 
 define clone_or_pull
