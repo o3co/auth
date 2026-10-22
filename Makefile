@@ -1,8 +1,7 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
-PROVIDER_REV := 84609f33f0fd704c260735fd918413f0ceebfe13
-PROXY_REV := 9fc0dab66bcbb74c189c2b17812cf50851b9d2f2
-VERIFIER_REV := 6d6a26a43959c85558fabf834d2dbc3d32c41a86
-PROVIN_REV := abb14d9ff971e88261447dd255863301f22c3a7c
+PROVIDER_REV := d234b34a408dff1a70ffc4c9644aa3bcae41af87
+PROXY_REV := f18b1e5519ffab1677c6bedbd7e42d238cacd1a5
+VERIFIER_REV := 508566277153dd2a467a8ff3eeeeb1fbd12306d1
 
 define clone_or_pull
 	@if [ -d "$(1)/.git" ]; then \
@@ -24,18 +23,6 @@ setup:
 .PHONY: pull
 pull: setup
 
-# Exercise the actual downstream DID grant and policy extensions before release.
-.PHONY: setup-provin test-provin
-setup-provin:
-	$(call clone_or_pull,repos/auth.provider,git@github.com:o3co/auth.provider.git,$(PROVIDER_REV))
-	$(call clone_or_pull,repos/auth.policy-verifier,git@github.com:o3co/auth.policy-verifier.git,$(VERIFIER_REV))
-	$(call clone_or_pull,repos/provin.auth,git@github.com:provin-line/auth.git,$(PROVIN_REV))
-
-test-provin: setup-provin
-	cd repos/auth.provider && pnpm install --frozen-lockfile && pnpm --filter @o3co/auth-provider-oauth... run build
-	cd repos/auth.policy-verifier && pnpm install --frozen-lockfile && pnpm --filter @o3co/auth.policy-verifier.server... --filter @o3co/auth.policy-verifier.builtins... run build
-	node tests/provin/run.mjs
-
 .PHONY: status
 status:
 	@for dir in repos/auth.provider repos/auth.proxy repos/auth.policy-verifier; do \
@@ -45,35 +32,35 @@ status:
 		fi; \
 	done
 
+# auth.provider has no build of its own: its image installs the workspace with
+# the pnpm its `packageManager` names and generates the app the suite runs
+# (tests/dockerfiles/provider.Dockerfile).
 .PHONY: build
 build: setup
-	cd repos/auth.provider && pnpm install --frozen-lockfile && pnpm run build
 	cd repos/auth.proxy && pnpm install --frozen-lockfile && pnpm run build
 	cd repos/auth.policy-verifier && pnpm install --frozen-lockfile && pnpm run build
 
-# One definition of the shared HS256 secret, interpolated into the containers
-# by docker compose and exported to the test processes, which mint their own
-# tokens with it. Defining it twice is how the suite drifted before: the tests
-# fell back to a stale literal and every negative case failed as a 401 that
-# read like a policy failure. auth.provider#282 requires >=32 decoded bytes.
-export OAUTH_JWT_SECRET := qmV+afsq/SMZ7hPGs9edVQDvPzNmjXemJNjqti181v0=
-
-# Same one-definition rule for the issuer and audience: interpolated into the
-# containers by docker compose AND read by the test processes, which pin the
-# claims the provider stamps. The tests carried their own fallback literals
-# before (o3co/auth#12) — the exact two-definitions drift the secret already
-# had. The audience also appears once more in tests/provider/clients.yaml
-# (`allowedAudiences`), which is volume-mounted and out of interpolation's
-# reach; the comment there names this copy.
-export OAUTH_JWT_ISSUER := https://auth.e2e.test
+# The one definition of the issuer and the audience: interpolated into the
+# containers by docker compose and read by the test processes, which pin the
+# claims the provider stamps. The issuer is also the provider's public origin,
+# where the test processes reach it (the provider service's host port in
+# tests/docker-compose.yml), since the provider requires its issuer on its
+# public origin. The provider's signing key has its one definition in
+# tests/provider/local.conf, and the verifier's public half in
+# tests/abac/application.conf.
+export OAUTH_JWT_ISSUER := http://localhost:3099
 export OAUTH_JWT_AUDIENCE := https://api.e2e.test
 
+# Every run starts from a stack with no state: a failed run stops before the
+# last `down`, and a stack left up keeps its redis, whose rate-limit and
+# attempt counters then refuse the next run's logins with 429.
 .PHONY: test-e2e
 test-e2e: build
+	docker compose -f tests/docker-compose.yml down -v --remove-orphans
 	docker compose -f tests/docker-compose.yml up -d --build --wait
 	cd tests/token-flow && pnpm install --frozen-lockfile && pnpm vitest run
 	cd tests/abac && pnpm install --frozen-lockfile && pnpm vitest run
-	docker compose -f tests/docker-compose.yml down
+	docker compose -f tests/docker-compose.yml down -v
 
 # Container logs for a failed run. A target rather than a bare `docker compose
 # logs` because compose interpolates OAUTH_JWT_* into the provider service and

@@ -6,10 +6,9 @@
  * Proxy:    http://localhost:3098 (forwards to provider)
  *
  * Every token on the happy path below is minted by the provider through
- * `login -> /authorize (PKCE) -> /token`. Nothing here hand-signs a token and
- * calls the result an end-to-end test — that was o3co/auth#3. Hand-signing
- * survives only in the negative cases, where the point IS to present something
- * the provider would never issue (an expired token, a garbage token).
+ * `login -> /authorize (PKCE) -> /token`. Hand-signing appears only in the
+ * negative cases, which present something the provider would never issue (an
+ * expired token, a garbage token).
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import axios from 'axios';
@@ -18,10 +17,11 @@ import {
 	AUDIENCE,
 	CLIENT_ID,
 	ISSUER,
-	JWT_SECRET,
-	PROVIDER_URL,
+	OTHER_AUDIENCE,
 	PROXY_URL,
 	REDIRECT_URI,
+	SESSION_COOKIE_NAME,
+	SIGNING_KEY,
 	THIRD_PARTY_CLIENT_ID,
 	UNVERIFIED_USERNAME,
 	authorize,
@@ -31,6 +31,8 @@ import {
 	login,
 	pkce,
 	refresh,
+	signing,
+	tokenRequest,
 	userinfo,
 } from '../shared/oauthFlow.js';
 
@@ -44,7 +46,7 @@ beforeAll(async () => {
 	const session = await login();
 	expect(session.status).toBe(200);
 	cookie = session.cookie;
-	expect(cookie).toMatch(/auth\.session=/);
+	expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
 	grant = await codeFlow({ cookie });
 }, 30_000);
 
@@ -67,38 +69,36 @@ describe('Real grant path: login -> /authorize (PKCE) -> /token', () => {
 		// from every other JWT this provider mints.
 		expect(header.typ).toBe('at+jwt');
 		expect(payload.iss).toBe(ISSUER);
-		// The RFC 8707 `resource` parameter, not the client id: this is what
+		// The audience the RFC 8707 `resource` parameter asked: this is what
 		// makes the token usable at the policy-verifier.
 		expect(payload.aud).toBe(AUDIENCE);
-		expect(payload.azp).toBe(CLIENT_ID);
+		// RFC 9068 §2.2: the client the token was issued to.
+		expect(payload.client_id).toBe(CLIENT_ID);
 		expect(payload.sub).toBe('user-e2e-1');
 		expect(payload.jti).toBeTruthy();
 	});
 
 	it('carries `scope` as a space-delimited string, not a `scopes` array', () => {
 		const { payload } = decodeJwt(grant.access_token);
-		// The claim-shape drift o3co/auth#3 called out. The verifier reads
-		// `scope` (string); a `scopes` array would silently authorize nothing.
+		// The verifier reads `scope` (a string); a `scopes` array would silently
+		// authorize nothing.
 		expect(typeof payload.scope).toBe('string');
 		expect(payload.scope.split(' ')).toContain('read:project');
 		expect(payload.scopes).toBeUndefined();
 	});
 
-	it('gives the id_token and refresh token their own `typ`', () => {
-		// The verifier's ONLY discriminator between token kinds is this header
-		// (see the negative tests in tests/abac). Pinning all three here means
-		// a provider-side change to any of them fails on this repo's CI rather
-		// than silently widening what /verify accepts.
+	it('gives the id_token its own `typ`, and the refresh token no JWT form', () => {
+		// The verifier pins `at+jwt` (see the negative tests in tests/abac).
+		// Pinning both shapes means a provider-side change to either fails on
+		// this repo's CI rather than silently widening what /verify accepts.
 		//
-		// The id_token stamps the standard `JWT` as of auth.provider#394
-		// (v0.10.0): the nonstandard `id+jwt` failed strict external RPs and
-		// bought nothing, because what keeps an id_token out of `/verify` is
-		// being disjoint from RFC 9068's `at+jwt` — which `JWT` satisfies just
-		// as well. Verification accepts both spellings during the migration
-		// window auth.provider#402 closes; this pins what the provider MINTS,
-		// so it is the standard value with no dual accept.
+		// The id_token carries the standard `JWT`, disjoint from RFC 9068's
+		// `at+jwt`; its `aud` (the client id, below) would keep it out of
+		// `/verify` as well.
 		expect(decodeJwt(grant.id_token).header.typ).toBe('JWT');
-		expect(decodeJwt(grant.refresh_token).header.typ).toBe('rt+jwt');
+		// The refresh token is opaque to everyone but the provider: no signed
+		// JWT of three parts, so nothing that verifies JWTs can take it.
+		expect(grant.refresh_token.split('.')).not.toHaveLength(3);
 	});
 
 	it('binds the id_token to the client, not the resource', () => {
@@ -116,8 +116,7 @@ describe('Real grant path: /userinfo and /introspect', () => {
 	it('returns the scope-filtered claims for the provider-issued token', async () => {
 		const res = await userinfo(grant.access_token);
 		expect(res.status).toBe(200);
-		// `sub` must be the user id the Store published, not the session id —
-		// the AT-sub-from-session defect (auth.provider#259) would surface here.
+		// `sub` must be the user id the Store published, not the session id.
 		expect(res.body.sub).toBe('user-e2e-1');
 		// Granted `email` scope, so these appear; `name` was never requested.
 		expect(res.body.email).toBe('e2e-user@e2e.test');
@@ -149,27 +148,48 @@ describe('Real grant path: refresh rotation and replay', () => {
 		expect(decodeJwt(first.body.access_token).payload.aud).toBe(AUDIENCE);
 
 		// Replaying the consumed token is reuse detection, not a stale-token
-		// shrug: the provider names it.
+		// shrug: the replay is refused, and it revokes the whole family, so the
+		// rotated refresh token and the access token it came with stop working
+		// too.
 		const replay = await refresh({ refreshToken: fresh.refresh_token });
 		expect(replay.status).toBe(400);
 		expect(replay.body.error).toBe('invalid_grant');
-		expect(replay.body.error_description).toBe('replay_detected');
+		const rotated = await refresh({ refreshToken: first.body.refresh_token });
+		expect(rotated.status).toBe(400);
+		expect(rotated.body.error).toBe('invalid_grant');
+		expect((await introspect(first.body.access_token)).body.active).toBe(false);
 	}, 30_000);
 
-	it('drops the audience when `resource` is omitted on refresh', async () => {
-		const fresh = await codeFlow({ cookie });
-		expect(decodeJwt(fresh.access_token).payload.aud).toBe(AUDIENCE);
+	it('keeps the audience when `resource` is omitted on refresh', async () => {
+		// Issued for the client's other audience, not the first one it gets
+		// when no `resource` is asked, so keeping it cannot be told from
+		// falling back to that default.
+		const fresh = await codeFlow({ cookie, resource: OTHER_AUDIENCE });
+		expect(decodeJwt(fresh.access_token).payload.aud).toBe(OTHER_AUDIENCE);
 
-		// RFC 8707 §2.2 has the client repeat `resource` on refresh, and the
-		// provider takes that literally — omitting it falls back to the client
-		// id. The refreshed token is then still perfectly valid and completely
-		// unusable at the resource server, which is a trap worth pinning: if
-		// the provider ever starts carrying the audience forward, this test
-		// fails and tells us the contract changed rather than letting a
-		// silently-broken refresh path ship.
+		// The presented refresh token's audience is the default on refresh
+		// (RFC 8707 §2.2): without `resource`, the new access token and the
+		// rotated refresh token carry it. The refresh token is opaque, so the
+		// rotated one shows its audience by the access token it refreshes to.
 		const noResource = await refresh({ refreshToken: fresh.refresh_token, resource: null });
 		expect(noResource.status).toBe(200);
-		expect(decodeJwt(noResource.body.access_token).payload.aud).toBe(CLIENT_ID);
+		expect(decodeJwt(noResource.body.access_token).payload.aud).toBe(OTHER_AUDIENCE);
+		const rotated = await refresh({ refreshToken: noResource.body.refresh_token, resource: null });
+		expect(rotated.status).toBe(200);
+		expect(decodeJwt(rotated.body.access_token).payload.aud).toBe(OTHER_AUDIENCE);
+	}, 30_000);
+
+	it('refuses a refresh `resource` outside the presented token\'s audience', async () => {
+		// Issued for the client's other audience.
+		const fresh = await codeFlow({ cookie, resource: OTHER_AUDIENCE });
+		expect(decodeJwt(fresh.access_token).payload.aud).toBe(OTHER_AUDIENCE);
+
+		// The presented token's audience is also the ceiling: a `resource` the
+		// client's `allowedAudiences` lists is refused when the token does not
+		// name it.
+		const widened = await refresh({ refreshToken: fresh.refresh_token });
+		expect(widened.status).toBe(400);
+		expect(widened.body.error).toBe('invalid_target');
 	}, 30_000);
 });
 
@@ -180,11 +200,15 @@ describe('/authorize admission rules', () => {
 			cookie,
 			challenge,
 			clientId: THIRD_PARTY_CLIENT_ID,
-			scope: 'read:project',
+			// A request that is right in every other respect (the provider's
+			// default `authorize.oidc-mode`, `oidc-required`, asks `openid` of
+			// every authorization request), so that being third-party is what
+			// is refused.
+			scope: 'openid read:project',
 		});
-		// auth.provider#316/#330: the invariant is unconditional, and the
-		// refusal is delivered as a redirect per RFC 6749 §4.1.2.1 — no code
-		// is minted.
+		// With no consent page configured (this rig's), `/authorize` admits
+		// only first-party clients. The refusal is delivered as a redirect per
+		// RFC 6749 §4.1.2.1; no code is minted.
 		expect(res.status).toBe(302);
 		expect(res.query.get('error')).toBe('unauthorized_client');
 		expect(res.query.get('code')).toBeNull();
@@ -195,9 +219,9 @@ describe('/authorize admission rules', () => {
 		expect(unverified.status).toBe(200);
 		const { challenge } = pkce();
 		const res = await authorize({ cookie: unverified.cookie, challenge });
-		// auth.provider#297/#320, with OAUTH_REQUIRE_EMAIL_VERIFIED=true in
-		// the compose file. `access_denied` is RFC 6749 §4.1.2.1's code for a
-		// refusal by the authorization server, not a malformed request.
+		// The verified-email issuance policy the provider image composes.
+		// `access_denied` is RFC 6749 §4.1.2.1's code for a refusal by the
+		// authorization server, not a malformed request.
 		expect(res.status).toBe(302);
 		expect(res.query.get('error')).toBe('access_denied');
 		expect(res.query.get('code')).toBeNull();
@@ -209,36 +233,31 @@ describe('/authorize admission rules', () => {
 		const code = az.query.get('code');
 		expect(code).toBeTruthy();
 
-		const res = await fetch(`${PROVIDER_URL}/oauth/token`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				grant_type: 'authorization_code',
-				client_id: CLIENT_ID,
-				code,
-				redirect_uri: REDIRECT_URI,
-				code_verifier: pkce().verifier, // a verifier for a different challenge
-			}),
+		const res = await tokenRequest({
+			grant_type: 'authorization_code',
+			client_id: CLIENT_ID,
+			code,
+			redirect_uri: REDIRECT_URI,
+			code_verifier: pkce().verifier, // a verifier for a different challenge
 		});
 		expect(res.status).toBe(400);
-		expect((await res.json()).error).toBe('invalid_grant');
+		expect(res.body.error).toBe('invalid_grant');
 	}, 30_000);
 });
 
 describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 	/*
-	 * The proxy runs in `validation` mode: when a request carries an
-	 * Authorization header, it introspects the token against INTROSPECT_URL
-	 * (the provider's /oauth/introspect) and refuses the request unless the
-	 * response says `active: true`. Only then does it forward upstream.
+	 * In `validation` mode, when a request carries an Authorization header,
+	 * the proxy introspects the token against INTROSPECT_URL (the provider's
+	 * /oauth/introspect) and forwards the request only if the response says
+	 * `active: true`.
 	 *
-	 * Which side rejected a request is decidable from the body, and these
-	 * tests assert on it rather than on the status alone:
+	 * The body tells which side rejected a request, and these tests assert on
+	 * it, not on the status alone, so a proxy that forwards everything cannot
+	 * pass as one that validates:
 	 *   - proxy:    {"code":401,"message":"Invalid Token"}   (its own shape)
-	 *   - provider: {"error":"invalid_token", ...}           (RFC 6750 shape)
-	 *
-	 * Asserting only the status would let "the proxy forwarded everything and
-	 * the upstream happened to reject it" pass as "the proxy validates".
+	 *   - provider: RFC 6750's, a `WWW-Authenticate` challenge, with
+	 *     `{"error":"invalid_token", ...}` for a token it refuses
 	 */
 
 	it('forwards a provider-issued token upstream and returns the upstream response', async () => {
@@ -273,13 +292,28 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 	it('rejects an expired token at the proxy', async () => {
 		// Hand-signed on purpose: the provider will not mint an already-expired
 		// token, and the envelope still has to match what it issues or the
-		// rejection would prove nothing about expiry. The provider's verifier
-		// allows 5 minutes of clock skew on `exp` (DEFAULT_CLOCK_SKEW_MS), so
-		// expire well beyond that window.
-		const token = jwt.sign({ iss: ISSUER, aud: AUDIENCE, sub: 'user-e2e-1' }, JWT_SECRET, {
-			expiresIn: -600,
-			header: { typ: 'at+jwt' },
-		});
+		// rejection would prove nothing about expiry. A ten-minute lifetime
+		// that ended ten minutes ago, well past any allowance for clocks that
+		// differ.
+		const now = Math.floor(Date.now() / 1000);
+		const sign = (iat) =>
+			jwt.sign(
+				{
+					iss: ISSUER,
+					aud: AUDIENCE,
+					sub: 'user-e2e-1',
+					client_id: CLIENT_ID,
+					scope: 'read:project',
+					iat,
+					exp: iat + 600,
+				},
+				SIGNING_KEY,
+				{ ...signing(), header: { typ: 'at+jwt' } },
+			);
+		// The same envelope and lifetime, still running, is one the provider
+		// vouches for, so expiry is all that is refused below.
+		expect((await introspect(sign(now - 60))).body.active).toBe(true);
+		const token = sign(now - 1200);
 		const res = await proxy.get('/oauth/userinfo', {
 			headers: { Authorization: `Bearer ${token}` },
 		});
@@ -306,20 +340,21 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 
 	it('passes an unauthenticated request through to the upstream', async () => {
 		// No Authorization header means the proxy does not introspect at all —
-		// it forwards, and the upstream decides. The RFC 6750 error shape is
-		// the proof that the request really did reach the provider rather than
-		// being short-circuited by the proxy.
+		// it forwards, and the upstream decides. The provider's challenge to a
+		// request with no credentials, one per scheme it takes (RFC 6750 §3.1,
+		// RFC 9449 §7.1) and no error code, is the proof that the request really
+		// did reach the provider rather than being short-circuited by the proxy,
+		// whose own answer is `{code, message}`.
 		const res = await proxy.get('/oauth/userinfo');
 		expect(res.status).toBe(401);
-		expect(res.data.error).toBe('invalid_token');
+		expect(res.headers['www-authenticate']).toBe('Bearer, DPoP');
 		expect(res.data.code).toBeUndefined();
 	});
 
 	it('serves its own liveness endpoint (not an auth assertion)', async () => {
 		// /_healthcheck is mounted ahead of the auth middleware, so it is only
 		// ever evidence that the proxy process is up. Do not add an
-		// Authorization header here and read a 200 as acceptance — that was the
-		// original defect in this suite.
+		// Authorization header here and read a 200 as acceptance.
 		const res = await proxy.get('/_healthcheck');
 		expect(res.status).toBe(200);
 	});
