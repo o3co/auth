@@ -256,7 +256,7 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 	 * it, not on the status alone, so a proxy that forwards everything cannot
 	 * pass as one that validates:
 	 *   - proxy:    {"code":401,"message":"Invalid Token"}   (its own shape)
-	 *   - provider: RFC 6750's, a `WWW-Authenticate: Bearer` challenge, with
+	 *   - provider: RFC 6750's, a `WWW-Authenticate` challenge, with
 	 *     `{"error":"invalid_token", ...}` for a token it refuses
 	 */
 
@@ -292,18 +292,28 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 	it('rejects an expired token at the proxy', async () => {
 		// Hand-signed on purpose: the provider will not mint an already-expired
 		// token, and the envelope still has to match what it issues or the
-		// rejection would prove nothing about expiry. Expired ten minutes ago,
-		// well past any allowance for clocks that differ.
-		const sign = (expiresIn) =>
+		// rejection would prove nothing about expiry. A ten-minute lifetime
+		// that ended ten minutes ago, well past any allowance for clocks that
+		// differ.
+		const now = Math.floor(Date.now() / 1000);
+		const sign = (iat) =>
 			jwt.sign(
-				{ iss: ISSUER, aud: AUDIENCE, sub: 'user-e2e-1', client_id: CLIENT_ID, scope: 'read:project' },
+				{
+					iss: ISSUER,
+					aud: AUDIENCE,
+					sub: 'user-e2e-1',
+					client_id: CLIENT_ID,
+					scope: 'read:project',
+					iat,
+					exp: iat + 600,
+				},
 				SIGNING_KEY,
-				{ ...signing(), expiresIn, header: { typ: 'at+jwt' } },
+				{ ...signing(), header: { typ: 'at+jwt' } },
 			);
-		// The same envelope unexpired is one the provider vouches for, so
-		// expiry is all that is refused below.
-		expect((await introspect(sign(60))).body.active).toBe(true);
-		const token = sign(-600);
+		// The same envelope and lifetime, still running, is one the provider
+		// vouches for, so expiry is all that is refused below.
+		expect((await introspect(sign(now - 60))).body.active).toBe(true);
+		const token = sign(now - 1200);
 		const res = await proxy.get('/oauth/userinfo', {
 			headers: { Authorization: `Bearer ${token}` },
 		});
@@ -330,14 +340,14 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 
 	it('passes an unauthenticated request through to the upstream', async () => {
 		// No Authorization header means the proxy does not introspect at all —
-		// it forwards, and the upstream decides. The RFC 6750 §3.1 challenge to
-		// a request with no credentials (`WWW-Authenticate: Bearer`, no error
-		// code) is the proof that the request really did reach the provider
-		// rather than being short-circuited by the proxy, whose own answer is
-		// `{code, message}`.
+		// it forwards, and the upstream decides. The provider's challenge to a
+		// request with no credentials, one per scheme it takes (RFC 6750 §3.1,
+		// RFC 9449 §7.1) and no error code, is the proof that the request really
+		// did reach the provider rather than being short-circuited by the proxy,
+		// whose own answer is `{code, message}`.
 		const res = await proxy.get('/oauth/userinfo');
 		expect(res.status).toBe(401);
-		expect(res.headers['www-authenticate']).toBe('Bearer');
+		expect(res.headers['www-authenticate']).toBe('Bearer, DPoP');
 		expect(res.data.code).toBeUndefined();
 	});
 

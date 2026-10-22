@@ -42,6 +42,9 @@ FROM workspace AS runtime
 # - resource-indicators: RFC 8707 `resource`, which narrows the access
 #   token's audience to the one auth.policy-verifier pins;
 # - verified-email: no access token for a user whose email is not verified;
+# - dpop and mtls: the binding kinds, so the provider vouches for a token
+#   bound to a key or a certificate, which the suite presents to Bearer-only
+#   consumers;
 # - the store axis on redis, so every feature's state goes through Redis, as
 #   it would across replicas, instead of process memory.
 # The configuration is not written here: compose supplies the environment the
@@ -53,6 +56,8 @@ RUN node provider/modules/scaffold/create-app/src/main.ts app \
       --add @mod/session-grant \
       --add @mod/resource-indicators \
       --add @mod/verified-email \
+      --add @mod/dpop \
+      --add @mod/mtls \
       --axis @mod/store=@mod/redis
 
 RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc,uid=1000 \

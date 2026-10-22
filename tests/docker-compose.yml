@@ -54,6 +54,13 @@ services:
       # The key and its `kid` are in tests/provider/local.conf.
       - KEYS_SIGNING_ALG=ES256
 
+      # ---- Sender binding ------------------------------------------------
+      # DPoP and mTLS are composed so the provider vouches for a bound token,
+      # and the suite proves that a Bearer-only consumer refuses it, not that
+      # the provider never issued it. Any certificate binds: the suite binds
+      # none, it only presents tokens bound to one.
+      - MTLS_MODE=self-signed
+
       # ---- Deployment and state -------------------------------------------
       # One instance. Its store is Redis (the image composes the redis store
       # axis), and no setting accepts a store in process memory, so a drift

@@ -57,6 +57,11 @@ describe('Internal Bearer adoption: real protected operation', () => {
 	it.each([{ jkt: 'unproven-key' }, { 'x5t#S256': 'unproven-certificate' }])(
 		'refuses a bound token without possession evidence: %j', async (cnf) => {
 			const token = negativeToken({ cnf });
+			// The provider vouches for the token, binding included: what refuses it
+			// below is the Bearer-only boundary, not a token the provider rejects.
+			const checked = await introspect(token);
+			expect(checked.body.active).toBe(true);
+			expect(checked.body.cnf).toEqual(cnf);
 			const before = await counters();
 			expect((await call(token)).status).toBe(401);
 			const beforeProxy = await counters();
