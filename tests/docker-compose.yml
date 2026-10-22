@@ -51,8 +51,7 @@ services:
       - OAUTH_JWT_AUDIENCE=${OAUTH_JWT_AUDIENCE:?run via make test-e2e}
 
       # ---- Signing -------------------------------------------------------
-      # The key itself is in tests/provider/local.conf.
-      - KEYS_SIGNING_KID=e2e-1
+      # The key and its `kid` are in tests/provider/local.conf.
       - KEYS_SIGNING_ALG=ES256
 
       # ---- Deployment and state -------------------------------------------
@@ -97,10 +96,12 @@ services:
       - AUTH_MODE=validation
       - INTROSPECT_URL=http://provider:3000/oauth/introspect
       # The provider answers introspection to an authenticated confidential
-      # client alone, so every validation-mode proxy authenticates, here as
-      # the client the credentialed-proxy service below names.
-      - CLIENT_ID=e2e-resource-server
-      - CLIENT_SECRET=AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0=
+      # client alone, so every validation-mode proxy authenticates, as
+      # `e2e-resource-server` in tests/provider/local.conf, which holds the
+      # hash of this secret. The other validation-mode proxies name these two
+      # entries.
+      - &introspection-client-id CLIENT_ID=e2e-resource-server
+      - &introspection-client-secret CLIENT_SECRET=AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0=
       - UPSTREAM_BASEURL=http://provider:3000
     depends_on:
       provider:
@@ -173,9 +174,8 @@ services:
       - AUTH_MODE=validation
       - INTROSPECT_URL=http://provider:3000/oauth/introspect
       - INTROSPECT_CACHE_TTL_SEC=5
-      # As the proxy service's credentials above.
-      - CLIENT_ID=e2e-resource-server
-      - CLIENT_SECRET=AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0=
+      - *introspection-client-id
+      - *introspection-client-secret
       - UPSTREAM_BASEURL=http://protected-api:3000
     depends_on:
       protected-api:
@@ -290,10 +290,8 @@ services:
     environment:
       - AUTH_MODE=validation
       - INTROSPECT_URL=http://provider:3000/oauth/introspect
-      # Registered as `e2e-resource-server` in tests/provider/local.conf,
-      # which holds the hash of this secret.
-      - CLIENT_ID=e2e-resource-server
-      - CLIENT_SECRET=AfAFXyzwkkaSic+H6vMwW/Lb7ud5u7C6j1TinH8AzF0=
+      - *introspection-client-id
+      - *introspection-client-secret
       - UPSTREAM_BASEURL=http://echo-upstream:3000
     depends_on:
       provider:
@@ -320,7 +318,7 @@ services:
     environment:
       - AUTH_MODE=validation
       - INTROSPECT_URL=http://provider:3000/oauth/introspect
-      - CLIENT_ID=e2e-resource-server
+      - *introspection-client-id
       - CLIENT_SECRET=not-the-registered-secret
       - UPSTREAM_BASEURL=http://echo-upstream:3000
     depends_on:

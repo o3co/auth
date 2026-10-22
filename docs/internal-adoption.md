@@ -44,8 +44,9 @@ contract directly; it does not test the Go gRPC/ConnectRPC interceptor.
 ## Deployment boundary
 
 The compose uses one provider, Redis-backed state, an ES256 signing key, and
-disposable users, clients and secrets. Configure the real application's clients, permitted scopes,
-issuer/audience, secrets, HTTPS and secure cookies before sending real traffic.
+disposable users, clients and secrets. Configure the real application's
+clients, permitted scopes, issuer/audience, secrets, HTTPS and secure cookies
+before sending real traffic.
 Keep the verifier and the upstream behind the intended enforcement boundary.
 The sample credentials and plain-HTTP settings are only for this test rig.
 
@@ -58,8 +59,9 @@ This baseline does not enable end-to-end DPoP/mTLS. Such tokens are refused by
 the default Bearer-only consumers until a trusted possession-verification
 boundary is implemented. Injection mode's external-credential exchange (RFC
 7523 jwt-bearer) is not exercised: the provider app this rig generates does
-not compose the provider's jwt-bearer grant. The exchange, actual Go interceptors, multiple provider or proxy replicas
-and asymmetric JWKS rotation need their own deployment-specific smoke tests
+not compose the provider's jwt-bearer grant. The exchange, actual Go
+interceptors, multiple provider or proxy replicas and asymmetric JWKS rotation
+need their own deployment-specific smoke tests
 before enabling those paths. Passing this
 baseline supports internal evaluation of the described topology; it is not a
 release-candidate or production-readiness certification.

@@ -30,23 +30,29 @@ export const AUDIENCE = requireEnv('OAUTH_JWT_AUDIENCE');
 export const PROVIDER_URL = ISSUER;
 
 /**
- * The provider's signing key (ES256), read out of the one file that defines
- * it, the provider's local layer, for the negative cases that sign what the
- * provider would never issue. Signed with any other key, every such case would
- * fail as a bad signature that reads like the rejection under test.
+ * The provider's signing key (ES256) and its `kid`, read out of the one file
+ * that defines them, the provider's local layer, for the negative cases that
+ * sign what the provider would never issue. Signed with any other key, or
+ * under another `kid` (the provider verifies a token by the key its `kid`
+ * names), every such case would fail as a bad signature that reads like the
+ * rejection under test.
  */
-export const SIGNING_KEY = readFileSync(
-	new URL('../provider/local.conf', import.meta.url),
-	'utf8',
-).match(/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/)[0];
+const LOCAL_LAYER = readFileSync(new URL('../provider/local.conf', import.meta.url), 'utf8');
+export const SIGNING_KEY = LOCAL_LAYER.match(
+	/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/,
+)[0];
+const SIGNING_KID = LOCAL_LAYER.match(/^keys\.signing\.kid = "([^"]+)"$/m)[1];
 /**
- * jsonwebtoken's options for SIGNING_KEY, for one token. The `kid` is
- * KEYS_SIGNING_KID in tests/docker-compose.yml: the provider verifies a token
- * by the key its `kid` names. Each token gets a `jti` of its own, as every
- * access token the provider issues carries one and it refuses one without.
+ * jsonwebtoken's options for SIGNING_KEY, for one token. Each token gets a
+ * `jti` of its own, as every access token the provider issues carries one and
+ * it refuses one without.
  */
 export function signing() {
-	return { algorithm: 'ES256', keyid: 'e2e-1', jwtid: crypto.randomBytes(16).toString('base64url') };
+	return {
+		algorithm: 'ES256',
+		keyid: SIGNING_KID,
+		jwtid: crypto.randomBytes(16).toString('base64url'),
+	};
 }
 
 function requireEnv(name) {

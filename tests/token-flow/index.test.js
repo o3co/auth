@@ -161,8 +161,11 @@ describe('Real grant path: refresh rotation and replay', () => {
 	}, 30_000);
 
 	it('keeps the audience when `resource` is omitted on refresh', async () => {
-		const fresh = await codeFlow({ cookie });
-		expect(decodeJwt(fresh.access_token).payload.aud).toBe(AUDIENCE);
+		// Issued for the client's other audience, not the first one it gets
+		// when no `resource` is asked, so keeping it cannot be told from
+		// falling back to that default.
+		const fresh = await codeFlow({ cookie, resource: OTHER_AUDIENCE });
+		expect(decodeJwt(fresh.access_token).payload.aud).toBe(OTHER_AUDIENCE);
 
 		// The presented refresh token's audience is the default on refresh
 		// (RFC 8707 §2.2): without `resource`, the new access token and the
@@ -170,10 +173,10 @@ describe('Real grant path: refresh rotation and replay', () => {
 		// rotated one shows its audience by the access token it refreshes to.
 		const noResource = await refresh({ refreshToken: fresh.refresh_token, resource: null });
 		expect(noResource.status).toBe(200);
-		expect(decodeJwt(noResource.body.access_token).payload.aud).toBe(AUDIENCE);
+		expect(decodeJwt(noResource.body.access_token).payload.aud).toBe(OTHER_AUDIENCE);
 		const rotated = await refresh({ refreshToken: noResource.body.refresh_token, resource: null });
 		expect(rotated.status).toBe(200);
-		expect(decodeJwt(rotated.body.access_token).payload.aud).toBe(AUDIENCE);
+		expect(decodeJwt(rotated.body.access_token).payload.aud).toBe(OTHER_AUDIENCE);
 	}, 30_000);
 
 	it('refuses a refresh `resource` outside the presented token\'s audience', async () => {
@@ -197,9 +200,10 @@ describe('/authorize admission rules', () => {
 			cookie,
 			challenge,
 			clientId: THIRD_PARTY_CLIENT_ID,
-			// A request that is right in every other respect (OpenID Connect
-			// asks `openid` of every authorization request), so that being
-			// third-party is what is refused.
+			// A request that is right in every other respect (the provider's
+			// default `authorize.oidc-mode`, `oidc-required`, asks `openid` of
+			// every authorization request), so that being third-party is what
+			// is refused.
 			scope: 'openid read:project',
 		});
 		// With no consent page configured (this rig's), `/authorize` admits
@@ -215,9 +219,9 @@ describe('/authorize admission rules', () => {
 		expect(unverified.status).toBe(200);
 		const { challenge } = pkce();
 		const res = await authorize({ cookie: unverified.cookie, challenge });
-		// OAUTH_REQUIRE_EMAIL_VERIFIED=true in the compose file. `access_denied`
-		// is RFC 6749 §4.1.2.1's code for a refusal by the authorization server,
-		// not a malformed request.
+		// The verified-email issuance policy the provider image composes.
+		// `access_denied` is RFC 6749 §4.1.2.1's code for a refusal by the
+		// authorization server, not a malformed request.
 		expect(res.status).toBe(302);
 		expect(res.query.get('error')).toBe('access_denied');
 		expect(res.query.get('code')).toBeNull();
@@ -252,7 +256,8 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 	 * it, not on the status alone, so a proxy that forwards everything cannot
 	 * pass as one that validates:
 	 *   - proxy:    {"code":401,"message":"Invalid Token"}   (its own shape)
-	 *   - provider: {"error":"invalid_token", ...}           (RFC 6750 shape)
+	 *   - provider: RFC 6750's, a `WWW-Authenticate: Bearer` challenge, with
+	 *     `{"error":"invalid_token", ...}` for a token it refuses
 	 */
 
 	it('forwards a provider-issued token upstream and returns the upstream response', async () => {
@@ -289,11 +294,16 @@ describe('Token flow: provider -> proxy (AUTH_MODE=validation)', () => {
 		// token, and the envelope still has to match what it issues or the
 		// rejection would prove nothing about expiry. Expired ten minutes ago,
 		// well past any allowance for clocks that differ.
-		const token = jwt.sign({ iss: ISSUER, aud: AUDIENCE, sub: 'user-e2e-1' }, SIGNING_KEY, {
-			...signing(),
-			expiresIn: -600,
-			header: { typ: 'at+jwt' },
-		});
+		const sign = (expiresIn) =>
+			jwt.sign(
+				{ iss: ISSUER, aud: AUDIENCE, sub: 'user-e2e-1', client_id: CLIENT_ID, scope: 'read:project' },
+				SIGNING_KEY,
+				{ ...signing(), expiresIn, header: { typ: 'at+jwt' } },
+			);
+		// The same envelope unexpired is one the provider vouches for, so
+		// expiry is all that is refused below.
+		expect((await introspect(sign(60))).body.active).toBe(true);
+		const token = sign(-600);
 		const res = await proxy.get('/oauth/userinfo', {
 			headers: { Authorization: `Bearer ${token}` },
 		});

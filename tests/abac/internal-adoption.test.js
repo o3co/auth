@@ -103,6 +103,7 @@ describe('Internal Bearer adoption: real protected operation', () => {
 		// browser.
 		const after = await sessionGrant(session.cookie);
 		expect(after.status).toBe(401);
+		expect(after.body.error).toBe('unauthorized');
 		expect(after.body.access_token).toBeUndefined();
 	}, 15_000);
 
