@@ -146,7 +146,8 @@ export async function login(username = USERNAME, password = PASSWORD) {
  * `error` query parameter (RFC 6749 §4.1.2.1), not by returning 4xx.
  *
  * Pass `resource: null` to omit the parameter. `undefined` would not omit it:
- * a destructuring default fires on an explicit `undefined`.
+ * a destructuring default fires on an explicit `undefined`. `acrValues` is
+ * sent as `acr_values` only when given.
  */
 export async function authorize({
 	cookie,
@@ -155,6 +156,7 @@ export async function authorize({
 	scope = 'openid email read:project',
 	resource = AUDIENCE,
 	state = 'e2e-state',
+	acrValues,
 }) {
 	const url = new URL(`${PROVIDER_URL}/oauth/authorize`);
 	const params = {
@@ -172,6 +174,9 @@ export async function authorize({
 		// `resource` — the verifier's dot-notation resource string. Same word,
 		// two protocols.
 		resource,
+		// OIDC Core §3.1.2.1: the acr asked, space-separated, in order of
+		// preference.
+		acr_values: acrValues,
 	};
 	for (const [k, v] of Object.entries(params)) {
 		if (v !== undefined && v !== null) url.searchParams.set(k, v);
@@ -243,9 +248,9 @@ export function sessionGrant({ cookie, clientId, scope }) {
  * replicas through Redis), and a suite that logs in per test would start
  * failing on the limiter rather than on the contract.
  */
-export async function codeFlow({ cookie, scope, resource, clientId } = {}) {
+export async function codeFlow({ cookie, scope, resource, clientId, acrValues } = {}) {
 	const { verifier, challenge } = pkce();
-	const az = await authorize({ cookie, challenge, scope, resource, clientId });
+	const az = await authorize({ cookie, challenge, scope, resource, clientId, acrValues });
 	const code = az.query?.get('code');
 	if (!code) {
 		throw new Error(

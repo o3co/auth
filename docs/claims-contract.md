@@ -81,10 +81,11 @@ Several rows are pinned by tests in this repo — read them before weakening a r
 - `aud` via the RFC 8707 `resource` parameter: `tests/token-flow/index.test.js` + `tests/provider/local.conf` (each client's `audiences`).
 - `client_id`, not `azp`: `tests/token-flow/index.test.js` and `tests/token-flow/injection.test.js`.
 - `sub` travels intact: `tests/abac/index.test.js` (provider `sub` → `/verify` `subject`).
+- `amr` / `acr` / `auth_time`: `tests/token-flow/authentication-claims.test.js`. After a password login, the access token from `authorization_code` and from the `session` grant carries `amr` `["pwd"]`, never an empty one, and the login's `auth_time` in whole seconds, before `iat`. `acr` is the first of `acr_values` that the table knows and the login meets (the `acr.values` entry in `tests/provider/local.conf`), and is absent when none is asked and on the `session` grant. A refresh carries the original `amr`, `auth_time` and `acr`.
 
 Pinned outside this repo: the delegation range grammar and containment vectors, by auth.policy-verifier's `packages/builtins/src/__tests__/delegation/range.test.mts`. There is no E2E pin here until the provider writes `authorization_details`.
 
-No test in this repo asserts `amr` / `acr` / `auth_time` or `act`. auth.provider's `modules/oauth/tokens/test/tokens.test.ts` pins the claim names and when they are written, the contract every `tokens` implementation passes (`modules/oauth/tokens/src/testing.ts`) what reads back, `modules/oauth/refresh/test/refresh.test.ts` that a refresh carries `amr` / `acr` / `auth_time`, and `modules/oauth/token-exchange/test/exchange.test.ts` the actor chain token exchange builds.
+No test in this repo asserts `act`: the rig composes no token exchange, the one grant that writes it. Nor can the rig reach the `amr` / `auth_time` branches beyond a password login, such as an empty `amr` left out or an unknown authentication time. auth.provider's `modules/oauth/tokens/test/tokens.test.ts` pins the claim names and when they are written, the contract every `tokens` implementation passes (`modules/oauth/tokens/src/testing.ts`) what reads back, `modules/oauth/refresh/test/refresh.test.ts` that a refresh carries `amr` / `acr` / `auth_time`, and `modules/oauth/token-exchange/test/exchange.test.ts` the actor chain token exchange builds.
 
 ## Change protocol
 
