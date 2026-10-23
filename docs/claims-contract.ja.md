@@ -81,7 +81,7 @@ RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュ
 - RFC 8707 `resource` パラメータ経由の `aud`: `tests/token-flow/index.test.js` + `tests/provider/local.conf`（各 client の `audiences`）。
 - `azp` ではなく `client_id`: `tests/token-flow/index.test.js` と `tests/token-flow/injection.test.js`。
 - `sub` の不変伝搬: `tests/abac/index.test.js`（provider の `sub` → `/verify` の `subject`）。
-- `amr` / `acr` / `auth_time`: `tests/token-flow/authentication-claims.test.js`。パスワードログイン後、`authorization_code` と `session` grant の access token は `amr` `["pwd"]`（空になることはない）と、ログインの `auth_time` を秒単位の整数で、`iat` より前の値として運ぶ。`acr` は `acr_values` のうち acr 表が知っておりログインが満たす最初の値（`tests/provider/local.conf` の `acr.values` のエントリ）であり、何も求められないときと `session` grant では含まれない。refresh は元の `amr`・`auth_time`・`acr` を運ぶ。
+- `amr` / `acr` / `auth_time`: `tests/token-flow/authentication-claims.test.js`。パスワードログイン後、`authorization_code` と `session` grant の access token は `amr` `["pwd"]`（空になることはない）と、ログインの `auth_time` を秒単位の整数で、`iat` より後にならない値として運ぶ（スイートはログイン後に 1 秒待つので、ここでは `iat` より厳密に前になる）。`acr` は `acr_values` のうち acr 表が知っておりログインが満たす最初の値（表の順ではなくリクエストの順。`tests/provider/local.conf` の `acr.values` のエントリ）であり、何も求められないときと `session` grant では含まれない。refresh は元の `amr`・`auth_time`・`acr` を運ぶ。
 
 本 repo の外でピンされているもの: 委任 range の文法と包含のベクタは、auth.policy-verifier の `packages/builtins/src/__tests__/delegation/range.test.mts` がピンする。provider が `authorization_details` を書くまで、本 repo の E2E ピンはない。
 

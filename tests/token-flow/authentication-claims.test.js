@@ -27,13 +27,18 @@ import {
 
 /** What a password login proves. */
 const PASSWORD_AMR = ['pwd'];
-/** The entry of `acr.values` in tests/provider/local.conf. */
+/**
+ * The entries of `acr.values` in tests/provider/local.conf, in the table's
+ * order. A password login meets both.
+ */
 const PASSWORD_ACR = 'urn:e2e:acr:pwd';
+const PASSWORD_ACR_2 = 'urn:e2e:acr:pwd-2';
 /**
  * How far the provider's clock may stand from this process's: the login's
- * time is taken here, `auth_time` there.
+ * time is taken here, `auth_time` there. Wide enough for a Docker VM whose
+ * clock drifts, and still far narrower than the same time in milliseconds.
  */
-const CLOCK_ALLOWANCE_S = 5;
+const CLOCK_ALLOWANCE_S = 60;
 
 let cookie;
 /** This process's clock just before and just after the login, in ms. */
@@ -93,11 +98,17 @@ describe('Authentication claims on the access token', () => {
 
 	it('authorization_code: `acr` is the first value asked that the table knows and the login meets', async () => {
 		// The first value asked is one the table does not know: it is passed
-		// over, not refused, as long as a later one is known.
+		// over, not refused, as long as a later one is known. Of the two known
+		// ones, both met, the first asked wins, though the table lists it last.
 		const { payload } = decodeJwt(
-			(await codeFlow({ cookie, acrValues: `urn:e2e:acr:unknown ${PASSWORD_ACR}` })).access_token,
+			(
+				await codeFlow({
+					cookie,
+					acrValues: `urn:e2e:acr:unknown ${PASSWORD_ACR_2} ${PASSWORD_ACR}`,
+				})
+			).access_token,
 		);
-		expect(payload.acr).toBe(PASSWORD_ACR);
+		expect(payload.acr).toBe(PASSWORD_ACR_2);
 		expectPasswordLogin(payload);
 	}, 30_000);
 });
