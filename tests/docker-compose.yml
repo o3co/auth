@@ -339,6 +339,101 @@ services:
       timeout: 5s
       retries: 10
 
+  # ---- An HS256 provider and verifier pair on one shared secret
+  # Apart from the ES256 stack above: a provider of its own, signing with a
+  # shared secret, and two verifiers given the same secret string. The paired
+  # verifier names the encoding the provider names; the other leaves its own
+  # default, so it derives other key bytes from the same string
+  # (tests/abac/hs256-pair.test.js, docs/claims-contract.md).
+  provider-hs256:
+    build:
+      context: ../repos/auth.provider
+      dockerfile: ../../tests/dockerfiles/provider.Dockerfile
+      target: runtime-hs256
+      secrets:
+        - npmrc
+    ports:
+      - "3090:3000"
+    volumes:
+      - ./provider/hs256.conf:/home/node/app/config/local.conf:ro
+    environment:
+      - APP_CONFIG=config/local.conf,config/application.conf
+      # Its issuer and public origin, defined once in the Makefile, at the
+      # host port above, as the ES256 provider's are.
+      - ISSUER_URL=${HS256_ISSUER:?run via make test-e2e}
+      - HTTP_PUBLIC_ORIGIN=${HS256_ISSUER:?run via make test-e2e}
+      - HTTP_INSECURE_ORIGIN=true
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=3000
+      - OAUTH_JWT_AUDIENCE=${OAUTH_JWT_AUDIENCE:?run via make test-e2e}
+      # The shared secret's one definition, read by tests/provider/hs256.conf
+      # and by both verifiers below through tests/abac/hs256.conf: 32 random
+      # bytes in hex. The encoding each side reads it in is named apart.
+      - &hs256-secret HS256_SECRET=b291c3565766f8f1faa335657977b658cf2306d7f55f01647fab65a02a0f14c2
+      # One instance, its store in process memory, which the provider takes
+      # only when told it is volatile.
+      - KERNEL_DEPLOYMENT=single
+      - STORE_ACCEPT_VOLATILE=true
+      # No revocation endpoint is composed, so none is offered.
+      - TOKENS_REVOCATION=unsupported
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_healthcheck"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  # Paired: the encoding the provider names.
+  policy-verifier-hs256:
+    build:
+      context: ../repos/auth.policy-verifier
+      dockerfile: ../../tests/dockerfiles/policy-verifier.Dockerfile
+      target: runtime
+      secrets:
+        - npmrc
+    ports:
+      - "3089:3000"
+    volumes:
+      - ./abac/hs256.conf:/home/node/templates/standalone/config/application.conf:ro
+    environment:
+      - &hs256-verifier-issuer OAUTH_JWT_ISSUER=${HS256_ISSUER:?run via make test-e2e}
+      - &hs256-verifier-audience OAUTH_JWT_AUDIENCE=${OAUTH_JWT_AUDIENCE:?run via make test-e2e}
+      - *hs256-secret
+      - OAUTH_JWT_SECRET_ENCODING=hex
+    depends_on:
+      provider-hs256:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_healthcheck"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  # Not paired: no encoding named, so the verifier's default, utf8, reads the
+  # same string as other bytes. Both sides boot; every token is refused.
+  policy-verifier-hs256-unpaired:
+    build:
+      context: ../repos/auth.policy-verifier
+      dockerfile: ../../tests/dockerfiles/policy-verifier.Dockerfile
+      target: runtime
+      secrets:
+        - npmrc
+    ports:
+      - "3088:3000"
+    volumes:
+      - ./abac/hs256.conf:/home/node/templates/standalone/config/application.conf:ro
+    environment:
+      - *hs256-verifier-issuer
+      - *hs256-verifier-audience
+      - *hs256-secret
+    depends_on:
+      provider-hs256:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_healthcheck"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
 secrets:
   npmrc:
     file: ~/.npmrc

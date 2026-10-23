@@ -1,7 +1,7 @@
 # Tested component revisions. Update these deliberately and rerun the full E2E.
 PROVIDER_REV := a0adc2416a6e67970c8b24a4e5f92ded416c8c0b
 PROXY_REV := f18b1e5519ffab1677c6bedbd7e42d238cacd1a5
-VERIFIER_REV := 2062757da9cc806b8db6ca858e714a2ccca8e24b
+VERIFIER_REV := 3c1324c6ecf23473dea67928fbb9c828fd5731f8
 
 define clone_or_pull
 	@if [ -d "$(1)/.git" ]; then \
@@ -50,6 +50,9 @@ build: setup
 # tests/abac/application.conf.
 export OAUTH_JWT_ISSUER := http://localhost:3099
 export OAUTH_JWT_AUDIENCE := https://api.e2e.test
+# The HS256 provider's issuer and public origin, on its own host port: the
+# HS256 pair is a second deployment beside the ES256 one, sharing the audience.
+export HS256_ISSUER := http://localhost:3090
 
 # Every run starts from a stack with no state: a failed run stops before the
 # last `down`, and a stack left up keeps its redis, whose rate-limit and
@@ -63,10 +66,10 @@ test-e2e: build
 	docker compose -f tests/docker-compose.yml down -v
 
 # Container logs for a failed run. A target rather than a bare `docker compose
-# logs` because compose interpolates OAUTH_JWT_* into the provider service and
-# refuses to start without them; only this Makefile exports the values, so a
-# workflow step that calls compose directly prints the interpolation error
-# instead of the logs it was asked for.
+# logs` because compose interpolates the variables exported above
+# (OAUTH_JWT_* and HS256_ISSUER) and refuses to start without them; only this
+# Makefile exports the values, so a workflow step that calls compose directly
+# prints the interpolation error instead of the logs it was asked for.
 .PHONY: logs
 logs:
 	docker compose -f tests/docker-compose.yml logs --no-color

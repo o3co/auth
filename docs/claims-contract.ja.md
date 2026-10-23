@@ -1,6 +1,6 @@
 # Provider ↔ Verifier Claims Contract（クレーム契約）
 
-[auth.provider](https://github.com/o3co/auth.provider) と [auth.policy-verifier](https://github.com/o3co/auth.policy-verifier) の間の JWT 契約には 2 つの半面がある。**署名の半面** — アルゴリズムと鍵配布の対称性（HS256/RS256/ES256/EdDSA、共有 secret または JWKS URI）— はデプロイ設定であり、各 repo の README に記載されている。本文書は **claim の半面** を記録する: どの claim が境界を越えるか、誰が書き、誰が読み、それぞれの側で何を意味するか。
+[auth.provider](https://github.com/o3co/auth.provider) と [auth.policy-verifier](https://github.com/o3co/auth.policy-verifier) の間の JWT 契約には 2 つの半面がある。**署名の半面** — アルゴリズムと鍵配布の対称性（HS256/RS256/ES256/EdDSA、共有 secret または JWKS URI）— はデプロイ設定であり、各 repo の README に記載されている。ただし両側が同じように読まなければならない唯一の値、[HS256 の共有 secret](#hs256-の共有-secret) は本文書に記録する。本文書は **claim の半面** を記録する: どの claim が境界を越えるか、誰が書き、誰が読み、それぞれの側で何を意味するか。
 
 各 repo の語彙はその repo の内側でのみ絶対である: provider は OAuth/OIDC 語彙（RFC 準拠）で claim を書き、verifier は自身のエッジでそれを自らの ABAC attribute 語彙へ翻訳する。下の表はその対応関係である。両 repo と本 repo の E2E スイートに散在する既存のマッピングコメントを集約した **索引** であり、第二の真実の源ではない。表と引用先コードが食い違う場合はコードとテストが勝ち、この表がドリフトしている。例外は[委任トークン](#委任トークン)で、provider 側が存在する前にその側を記述する。
 
@@ -16,10 +16,10 @@ RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュ
 | --- | --- | --- | --- |
 | `scope` | 空白区切り文字列（RFC 6749 §3.3）。何も付与されない場合は完全に省略 — `""` にも配列にもしない（`grantClaims`）。上限: client 登録の scope（`client-allowance` セクションの `scopes`）。 | `PayloadScopeCollector` が空白で分割 → `ATTR_SCOPES`。続いて `ResourceActionScopeRuleCollector` が `/verify` リクエストから導出した `{action}:{resourceType}` scope を要求する。 | capability の上限 — セッションが **要求できるもの** であって付与されたものではない（collector の doc comment と [auth.provider#56](https://github.com/o3co/auth.provider/issues/56) 参照）。scope 値の *内部文法* は verifier が所有し、provider は文字列を不透明に比較するだけ。 |
 | `sub` | セッションがログインさせた user の subject（`users` の `subject`）— session id ではない（`grantClaims`）。 | `PayloadSubjectIdCollector` → `ATTR_USER_ID`。`/verify` は wire の `subject` として反響する。 | identity はスタックを通して不変に伝わる。 |
-| `client_id` | token の発行先である *認証済み* client（RFC 9068 §2.2、`grantClaims`）。リクエスト body の `client_id` は読まない。access token に `azp` は入らない。 | 読まれない: `PayloadSubjectIdCollector` が `ATTR_CLIENT_ID` へ持ち上げるのは `azp` だけなので、これらの token から client を読めるルールはない。 | token がどの client 経由で発行されたか。 |
+| `client_id` | token の発行先である *認証済み* client（RFC 9068 §2.2、`grantClaims`）。リクエスト body の `client_id` は読まない。access token に `azp` は入らない（auth.provider の [移行ガイド、"Access and refresh tokens"](https://github.com/o3co/auth.provider/blob/develop/docs/migration.md#access-and-refresh-tokens)）。 | 読まれない: `PayloadSubjectIdCollector` が `ATTR_CLIENT_ID` へ持ち上げるのは `azp` だけなので、これらの token から client を読めるルールはない。 | token がどの client 経由で発行されたか。 |
 | `aud` | RFC 8707 `resource` パラメータを audience として反響。ない場合は client 登録の最初の audience（`client-allowance` セクションの `audiences`）。refresh（RFC 8707 §2.2）では、提示された refresh token の audience が上限かつ既定値になる。`resource` を付けない refresh はそれを保ち、その外の `resource` は `invalid_target` で拒否される。その内側の `resource` で絞られるのは access token だけで、ローテーション後の refresh token は元の scope と audience を保つ。 | jose 検証でピン — `oauth.jwt.audience` / `OAUTH_JWT_AUDIENCE`。 | token の宛先 resource server。E2E 値 `https://api.e2e.test` が provider の env（`tests/provider/local.conf` がそれを client の `audiences` に読む）**と** verifier の env の両方に設定されるのはこのため。 |
 | `iss` | デプロイ設定の issuer。必須、リクエスト由来にしない。 | jose 検証でピン — `oauth.jwt.issuer` / `OAUTH_JWT_ISSUER`。 | デプロイの identity。 |
-| `typ`（header） | access token は `at+jwt`（RFC 9068）、ID token（wire 名 `id_token`）は標準の `JWT`。refresh token は不透明で、JWT ではない。 | `oauth.jwt.tokenType`、default `at+jwt`。比較時に `application/` prefix は無視。 | 同じ鍵で署名される 2 種の JWT を区別する **唯一の** 判別子 — このピンが、id token が `/verify` を通ることを防いでいる。防いでいる実体は **`at+jwt` と互いに素であること** であり、`JWT` はこれを満たす。claim レベルの代替チェックは存在しない。refresh token は JWT ではないので、JWT 検証はそれを受け取らない。 |
+| `typ`（header） | access token は `at+jwt`（RFC 9068）、ID token（wire 名 `id_token`）は標準の `JWT`。refresh token は不透明で、JWT ではない（auth.provider の [移行ガイド、"Access and refresh tokens"](https://github.com/o3co/auth.provider/blob/develop/docs/migration.md#access-and-refresh-tokens)）。 | `oauth.jwt.tokenType`、default `at+jwt`。比較時に `application/` prefix は無視。 | 同じ鍵で署名される 2 種の JWT を区別する **唯一の** 判別子 — このピンが、id token が `/verify` を通ることを防いでいる。防いでいる実体は **`at+jwt` と互いに素であること** であり、`JWT` はこれを満たす。claim レベルの代替チェックは存在しない。refresh token は JWT ではないので、JWT 検証はそれを受け取らない。 |
 | `exp` / `iat` | 常に刻印（`modules/oauth/tokens/src/module.ts`）。 | 両方必須（`tokenAuthenticator` の必須 claim チェック + 常設の `maxTokenAgeSeconds` 上限）。`exp` のない token は永続 credential として拒否。 | 寿命。verifier は issuer の規律を信頼せず、issuer の `exp` をさらに上限で抑える。 |
 | `amr` / `acr` / `auth_time` | ユーザーがどう、どの保証レベルで、いつ認証したか。どれも grant が与えたときだけ書かれる（`grantClaims`）。`amr` と `auth_time` は、ユーザーの認証に立つ grant から来る: `authorization_code`（code のセッション）、`session`、`device_code`（承認したセッション）、WebAuthn ログイン grant（`urn:o3co:oauth:grant-type:webauthn`、`amr` は `["hwk"]`）。フェデレーションログインが証明するのは `fed` と、その IdP の `upstream-amr` が写す値であり、ログインゲートがその後に要求する第二要素は自身の値を加える。`acr` が生じるのは `authorization_code` だけで、リクエストの `acr_values` のうち、acr 表（`acr.values` とモジュールが提供するエントリ、`modules/oauth/acr`）が知っており、セッションの `amr` が満たす最初の値である。refresh token は不透明で、その family のレコードが family 開始時の `amr`・認証時刻・`acr` を保持し、refresh が発行するすべての access token がそれらを運ぶ（`modules/oauth/refresh`）。token exchange がそれらを運ぶのは、subject token がこの provider 自身の access token であるときだけである（`modules/oauth/token-exchange`）。空の `amr` は省かれ、空の `acr` が発行されることはない。`auth_time` は秒単位で `iat` より後にならず、認証時刻が不明なら省かれる（`modules/oauth/tokens/src/limits.ts`）。 | 組み込み collector は読まない。これらでゲートするデプロイは、検証済み claim を `PayloadClaimAttributeCollector`（`packages/builtins`）で自前の attribute キーへ写し（例: `{ from = "amr", to = "amr", type = "string[]" }`）、ルールを書く。 | **元の**認証イベント。OIDC Core §12.2 が refresh をまたいで `auth_time` を保つのと同じで、refresh や exchange で得た access token が示すのは、それが連なるログインであって refresh ではない。`auth_time` はセッションのサインイン時刻である。後の step-up は `amr` に加わり `acr` を満たしうるが `auth_time` は変えないので、それらの時刻を示さない。パスキーログインの `hwk` が示すのは鍵を持っていたことだけで、ユーザー検証が行われたことではない。無いことは provider が何も記録しなかったことを意味し、ユーザーが第二要素を使わなかったという表明ではない。 |
 | `act` | 書くのは token exchange grant（RFC 8693、`urn:ietf:params:oauth:grant-type:token-exchange`、`modules/oauth/token-exchange`）だけで、`actor_token` が提示されたときだけである: `act.sub` は actor token の subject で、subject token 自身の chain を `act.act` として入れ子にする（RFC 8693 §4.1）。`sub` は subject token の subject のまま（`grantClaims`）。actor token がなければ、発行される token に `act` はない。chain の深さは `token-exchange.max-actor-depth`（1–10、default 3）まで。refresh が運ぶことはない: token exchange は access token しか発行せず、refresh family のレコードは actor を持たない（`modules/oauth/refresh/src/record.ts`）。 | 組み込み collector は読まない。actor を名指すポリシーのために、デプロイが `PayloadClaimAttributeCollector`（`packages/builtins`）で `act.sub` を昇格する（例: `{ from = "act.sub", to = "actorId" }`）。 | 誰が subject のために動いているか。現在の actor を名指すのは最も外側の `act` だけで、入れ子のものは以前の actor であり、RFC 8693 §4.1 はそれをアクセス制御の判断に使わない。 |
@@ -72,6 +72,24 @@ RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュ
 - grant の id を運ぶ claim。verifier はそれを読まない;
 - 包含ルールは provider の拡張点である。verifier が実装するのは上のルールだけなので、provider のルールを差し替えるデプロイは `DelegationRangeRuleCollector` も差し替える。
 
+## HS256 の共有 secret
+
+署名の半面のうち、両側が保持する唯一の値。HS256 では provider が署名し、verifier が検証するのに同じ secret 文字列を使う。各側はその文字列を自分の設定に従って HMAC の鍵バイト列に変換し、両側が同じバイト列を得たときだけ token が検証を通る。*Provider* 列の path は [o3co/auth.provider](https://github.com/o3co/auth.provider)、*Verifier* 列の path は [o3co/auth.policy-verifier](https://github.com/o3co/auth.policy-verifier) からの相対 path。
+
+| | Provider | Verifier |
+| --- | --- | --- |
+| 設定 | `keys.signing.secret-encoding`、v0.18.0 から（`modules/foundation/keys/src/secret/secret.ts`） | `oauth.jwt.secretEncoding` / `OAUTH_JWT_SECRET_ENCODING`、v0.17.0 から（`packages/server/src/config/secretEncoding.mts`）。下の 3 つ以外の値は、どの mode でも起動を拒否する。 |
+| `utf8` | テキスト自身のバイト列。 | テキスト自身のバイト列。 |
+| `hex` | 値が hex の完全なバイト列（`/^(?:[0-9a-fA-F]{2})+$/`）であるとき、値が表すバイト列。 | 同じ。 |
+| `base64` | 値が厳格な padding 付き標準 base64 であるとき、値が表すバイト列。 | 同じ。 |
+| 未設定 | 値が hex の完全なバイト列なら hex、そうでなければ厳格な padding 付き標準 base64。両方に当てはまる値（64 文字の hex など）は hex として読む。 | `utf8`。 |
+| 指定した読み方に合わない値 | 起動を拒否する。 | 起動を拒否する。 |
+| 鍵の大きさ | どの読み方でも 32 バイト以上、かつ 8 種類以上のバイト値。 | 32 バイト以上: `hex` と `base64` では読み方が与えるバイト列、`utf8` では文字列を hex・base64・テキストとして読んだうち最も小さい読み方で測る（同 repo の `README.md`、"How the secret string is read"）。 |
+
+**ペアリングのルール: 両側に同じ encoding を明示的に設定する。** どちらの側も既定値のままにしない。既定値は異なる: `utf8` は verifier が常に適用してきた読み方であり、provider が 0.18 より前に適用していた読み方でもある（provider の `modules/foundation/keys/src/signing/section.ts` にある設定の説明）。0.18 以降、provider の未設定時の読み方は hex か base64 を decode するものになり、verifier は自分の読み方を保った。そのため同じ文字列でも、両側が既定値のままなら 2 つの異なる鍵になる。
+
+**失敗の形。** 不一致はどちらの側でも起動エラーにならない: 両側とも起動し、verifier は provider が署名したすべての token に `401` `invalid_token` を返す。起動を拒否するのは、ある側が自分の文字列を受け取れないときだけである: その側が指定した読み方に合わない文字列、encoding を指定していない provider での hex でも base64 でもない文字列、その側の鍵の大きさに満たない文字列。
+
 ## 実行可能な行
 
 いくつかの行は本 repo のテストでピンされている — 行を弱める前に読むこと:
@@ -82,6 +100,7 @@ RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュ
 - `azp` ではなく `client_id`: `tests/token-flow/index.test.js` と `tests/token-flow/injection.test.js`。
 - `sub` の不変伝搬: `tests/abac/index.test.js`（provider の `sub` → `/verify` の `subject`）。
 - `amr` / `acr` / `auth_time`: `tests/token-flow/authentication-claims.test.js`。パスワードログイン後、`authorization_code` と `session` grant の access token は `amr` `["pwd"]`（空になることはない）と、ログインの `auth_time` を秒単位の整数で、`iat` より後にならない値として運ぶ（スイートはログイン後に 1 秒待つので、ここでは `iat` より厳密に前になる）。`acr` は `acr_values` のうち acr 表が知っておりログインが満たす最初の値（表の順ではなくリクエストの順。`tests/provider/local.conf` の `acr.values` のエントリ）であり、何も求められないときと `session` grant では含まれない。refresh は元の `amr`・`auth_time`・`acr` を運ぶ。
+- HS256 の共有 secret: `tests/abac/hs256-pair.test.js` が、`tests/docker-compose.yml` の HS256 provider と 2 つの HS256 verifier（`provider-hs256`、`policy-verifier-hs256`、`policy-verifier-hs256-unpaired`）に対してピンする。provider は `hex` を指定する（`tests/provider/hs256.conf`）。同じく `hex` を指定した verifier は、provider が発行した token を許可する。既定値のままの verifier はその token を `401` で拒否し、同じ claim をテキスト自身のバイト列で署名したものは許可する。つまり両者が食い違うのは encoding だけである。この rig では、provider が指定した `hex` と未設定時の読み方を区別できない（未設定でもこの値は hex として読まれる）。指定した読み方は provider 自身のテストがピンする。
 
 本 repo の外でピンされているもの: 委任 range の文法と包含のベクタは、auth.policy-verifier の `packages/builtins/src/__tests__/delegation/range.test.mts` がピンする。provider が `authorization_details` を書くまで、本 repo の E2E ピンはない。
 
@@ -89,4 +108,4 @@ RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュ
 
 ## 変更プロトコル
 
-すべての行は 2-repo 制約である: 片側だけ変えると `/verify` が壊れる — 最悪の場合、静かに何も認可しなくなる。行を変更する PR は (1) 所有側 repo、(2) 本 repo の E2E ピン、(3) この表、を更新する。署名の半面の同等ルール（alg/鍵の対称性）は `tests/` 配下の compose/Makefile 単一定義化で強制されている。
+すべての行は 2-repo 制約である: 片側だけ変えると `/verify` が壊れる — 最悪の場合、静かに何も認可しなくなる。行を変更する PR は (1) 所有側 repo、(2) 本 repo の E2E ピン、(3) この表、を更新する。署名の半面の同等ルール（alg/鍵の対称性）は `tests/` 配下の compose/Makefile 単一定義化で強制されている。HS256 の secret 文字列もそこに唯一の定義を持つ。encoding は持たない: デプロイと同じく各側が自分の encoding を指定し、ペアリングのルールはその 2 つが一致することだからである。
