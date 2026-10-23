@@ -69,3 +69,25 @@ WORKDIR /home/node/app
 
 ENTRYPOINT ["tini", "--"]
 CMD ["node", "src/main.ts"]
+
+#############################################
+FROM workspace AS runtime-hs256
+
+# The token endpoint alone, with what it needs to run: client credentials, on
+# a store kept in memory. It signs HS256, which OpenID Connect refuses (an ID
+# token checked with a shared secret could be forged by any holder), so this
+# app composes none. The configuration is compose's environment and the local
+# layer tests/provider/hs256.conf.
+RUN node provider/modules/scaffold/create-app/src/main.ts app \
+      --workspace /home/node/provider \
+      @mod/token-endpoint
+
+RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc,uid=1000 \
+    cd app && pnpm install
+
+ENV NODE_ENV=production
+
+WORKDIR /home/node/app
+
+ENTRYPOINT ["tini", "--"]
+CMD ["node", "src/main.ts"]
