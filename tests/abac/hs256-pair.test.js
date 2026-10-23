@@ -30,9 +30,13 @@ function requireEnv(name) {
 const HS256_ISSUER = requireEnv('HS256_ISSUER');
 
 /** The shared secret string, read out of its one definition in tests/docker-compose.yml. */
-const HS256_SECRET = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8').match(
-	/HS256_SECRET=([0-9a-f]+)$/m,
-)[1];
+const HS256_SECRET = (() => {
+	const found = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8').match(
+		/HS256_SECRET=([0-9a-f]+)$/m,
+	);
+	if (!found) throw new Error('tests/docker-compose.yml has no `HS256_SECRET=<hex>` line.');
+	return found[1];
+})();
 
 /** `e2e-hs256-service` in tests/provider/hs256.conf, which holds the hash of this secret. */
 const HS256_CLIENT_ID = 'e2e-hs256-service';
@@ -42,7 +46,7 @@ async function verifyAt(origin, token) {
 	const res = await fetch(`${origin}/verify`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-		// `read` on `project:1` demands `read:project`, the scope the client is minted.
+		// `read` on `project:1` demands `read:project`, the scope the client is minted with.
 		body: JSON.stringify({ resource: 'project:1', action: 'read' }),
 	});
 	return { status: res.status, body: await res.json() };

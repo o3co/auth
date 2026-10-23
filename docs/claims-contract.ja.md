@@ -78,17 +78,17 @@ RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュ
 
 | | Provider | Verifier |
 | --- | --- | --- |
-| 設定 | `keys.signing.secret-encoding`、0.18.0 から（`modules/foundation/keys/src/secret/secret.ts`） | `oauth.jwt.secretEncoding` / `OAUTH_JWT_SECRET_ENCODING`、v0.17.0 から（`packages/server/src/config/secretEncoding.mts`）。下の 3 つ以外の値は、どの mode でも起動を拒否する。 |
+| 設定 | `keys.signing.secret-encoding`、v0.18.0 から（`modules/foundation/keys/src/secret/secret.ts`） | `oauth.jwt.secretEncoding` / `OAUTH_JWT_SECRET_ENCODING`、v0.17.0 から（`packages/server/src/config/secretEncoding.mts`）。下の 3 つ以外の値は、どの mode でも起動を拒否する。 |
 | `utf8` | テキスト自身のバイト列。 | テキスト自身のバイト列。 |
 | `hex` | 値が hex の完全なバイト列（`/^(?:[0-9a-fA-F]{2})+$/`）であるとき、値が表すバイト列。 | 同じ。 |
 | `base64` | 値が厳格な padding 付き標準 base64 であるとき、値が表すバイト列。 | 同じ。 |
 | 未設定 | 値が hex の完全なバイト列なら hex、そうでなければ厳格な padding 付き標準 base64。両方に当てはまる値（64 文字の hex など）は hex として読む。 | `utf8`。 |
 | 指定した読み方に合わない値 | 起動を拒否する。 | 起動を拒否する。 |
-| 鍵の大きさ | どの読み方でも 32 バイト以上、かつ 8 種類以上のバイト値。 | 読み方が与えるバイト列で 32 バイト以上（同 repo の `README.md`、"How the secret string is read"）。 |
+| 鍵の大きさ | どの読み方でも 32 バイト以上、かつ 8 種類以上のバイト値。 | 32 バイト以上: `hex` と `base64` では読み方が与えるバイト列、`utf8` では文字列を hex・base64・テキストとして読んだうち最も小さい読み方で測る（同 repo の `README.md`、"How the secret string is read"）。 |
 
-**ペアリングのルール: 両側に同じ encoding を明示的に設定する。** どちらの側も既定値のままにしない。既定値は異なる: `utf8` は verifier が常に適用してきた読み方であり、provider が 0.18 より前に適用していた読み方でもある（provider の `modules/foundation/keys/src/signing/section.ts` にある設定の説明）。0.18 以降、provider の未設定時の読み方は hex か base64 を decode するものになり、verifier は自分の読み方を保った。そのため同じ文字列でも、両側が既定値のままなら 2 つの異なる鍵になる。provider は 0.18 と 0.19 の間は未設定時の読み方を保ち、1.0 より前に HS256 でこの設定を必須にする可能性がある。
+**ペアリングのルール: 両側に同じ encoding を明示的に設定する。** どちらの側も既定値のままにしない。既定値は異なる: `utf8` は verifier が常に適用してきた読み方であり、provider が 0.18 より前に適用していた読み方でもある（provider の `modules/foundation/keys/src/signing/section.ts` にある設定の説明）。0.18 以降、provider の未設定時の読み方は hex か base64 を decode するものになり、verifier は自分の読み方を保った。そのため同じ文字列でも、両側が既定値のままなら 2 つの異なる鍵になる。
 
-**失敗の形。** 不一致はどちらの側でも起動エラーにならない: 両側とも起動し、verifier は provider が署名したすべての token に `401` `invalid_token` を返す。起動を拒否するのは、ある側が指定した読み方に合わない文字列だけで、拒否するのはその側である。
+**失敗の形。** 不一致はどちらの側でも起動エラーにならない: 両側とも起動し、verifier は provider が署名したすべての token に `401` `invalid_token` を返す。起動を拒否するのは、ある側が自分の文字列を受け取れないときだけである: その側が指定した読み方に合わない文字列、encoding を指定していない provider での hex でも base64 でもない文字列、その側の鍵の大きさに満たない文字列。
 
 ## 実行可能な行
 
@@ -100,7 +100,7 @@ RFC 9068 JWT access token。provider は claim を 1 か所、`tokens` モジュ
 - `azp` ではなく `client_id`: `tests/token-flow/index.test.js` と `tests/token-flow/injection.test.js`。
 - `sub` の不変伝搬: `tests/abac/index.test.js`（provider の `sub` → `/verify` の `subject`）。
 - `amr` / `acr` / `auth_time`: `tests/token-flow/authentication-claims.test.js`。パスワードログイン後、`authorization_code` と `session` grant の access token は `amr` `["pwd"]`（空になることはない）と、ログインの `auth_time` を秒単位の整数で、`iat` より後にならない値として運ぶ（スイートはログイン後に 1 秒待つので、ここでは `iat` より厳密に前になる）。`acr` は `acr_values` のうち acr 表が知っておりログインが満たす最初の値（表の順ではなくリクエストの順。`tests/provider/local.conf` の `acr.values` のエントリ）であり、何も求められないときと `session` grant では含まれない。refresh は元の `amr`・`auth_time`・`acr` を運ぶ。
-- HS256 の共有 secret: `tests/abac/hs256-pair.test.js` が、`tests/docker-compose.yml` の HS256 provider と 2 つの HS256 verifier（`provider-hs256`、`policy-verifier-hs256`、`policy-verifier-hs256-unpaired`）に対してピンする。provider は `hex` を指定する（`tests/provider/hs256.conf`）。同じく `hex` を指定した verifier は、provider が発行した token を許可する。既定値のままの verifier はその token を `401` で拒否し、同じ claim をテキスト自身のバイト列で署名したものは許可する。つまり両者が食い違うのは encoding だけである。
+- HS256 の共有 secret: `tests/abac/hs256-pair.test.js` が、`tests/docker-compose.yml` の HS256 provider と 2 つの HS256 verifier（`provider-hs256`、`policy-verifier-hs256`、`policy-verifier-hs256-unpaired`）に対してピンする。provider は `hex` を指定する（`tests/provider/hs256.conf`）。同じく `hex` を指定した verifier は、provider が発行した token を許可する。既定値のままの verifier はその token を `401` で拒否し、同じ claim をテキスト自身のバイト列で署名したものは許可する。つまり両者が食い違うのは encoding だけである。この rig では、provider が指定した `hex` と未設定時の読み方を区別できない（未設定でもこの値は hex として読まれる）。指定した読み方は provider 自身のテストがピンする。
 
 本 repo の外でピンされているもの: 委任 range の文法と包含のベクタは、auth.policy-verifier の `packages/builtins/src/__tests__/delegation/range.test.mts` がピンする。provider が `authorization_details` を書くまで、本 repo の E2E ピンはない。
 

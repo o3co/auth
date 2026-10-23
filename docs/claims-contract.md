@@ -78,17 +78,17 @@ The one value of the signature half that both sides hold. Under HS256 the provid
 
 | | Provider | Verifier |
 | --- | --- | --- |
-| Setting | `keys.signing.secret-encoding`, since 0.18.0 (`modules/foundation/keys/src/secret/secret.ts`) | `oauth.jwt.secretEncoding` / `OAUTH_JWT_SECRET_ENCODING`, since v0.17.0 (`packages/server/src/config/secretEncoding.mts`). A value other than the three below refuses boot, in every mode. |
+| Setting | `keys.signing.secret-encoding`, since v0.18.0 (`modules/foundation/keys/src/secret/secret.ts`) | `oauth.jwt.secretEncoding` / `OAUTH_JWT_SECRET_ENCODING`, since v0.17.0 (`packages/server/src/config/secretEncoding.mts`). A value other than the three below refuses boot, in every mode. |
 | `utf8` | The text's own bytes. | The text's own bytes. |
 | `hex` | The bytes the value spells, when it is whole bytes of hex (`/^(?:[0-9a-fA-F]{2})+$/`). | The same. |
 | `base64` | The bytes the value spells, when it is strict padded standard base64. | The same. |
 | Unset | Hex where the value is whole bytes of hex, otherwise strict padded standard base64. A value that is both, such as 64 hex characters, reads as hex. | `utf8`. |
 | A value not of the reading named | Refuses boot. | Refuses boot. |
-| Key size | At least 32 bytes and at least 8 distinct byte values, under any reading. | At least 32 bytes, judged on the bytes the reading gives (its `README.md`, "How the secret string is read"). |
+| Key size | At least 32 bytes and at least 8 distinct byte values, under any reading. | At least 32 bytes: under `hex` and `base64`, the bytes the reading gives; under `utf8`, the string's smallest plausible reading as hex, base64 or text (its `README.md`, "How the secret string is read"). |
 
-**Pairing rule: set both sides to the same explicit encoding.** Do not leave either side at its default. The defaults differ: `utf8` is the reading the verifier has always applied, and the one the provider applied before 0.18 (the setting's description in the provider's `modules/foundation/keys/src/signing/section.ts`); since 0.18 the provider's unset reading decodes hex or base64, and the verifier kept its own. So the same string, with both sides at their defaults, is two different keys. The provider keeps its unset reading through 0.18 and 0.19, and may come to require the setting for HS256 before 1.0.
+**Pairing rule: set both sides to the same explicit encoding.** Do not leave either side at its default. The defaults differ: `utf8` is the reading the verifier has always applied, and the one the provider applied before 0.18 (the setting's description in the provider's `modules/foundation/keys/src/signing/section.ts`); since 0.18 the provider's unset reading decodes hex or base64, and the verifier kept its own. So the same string, with both sides at their defaults, is two different keys.
 
-**Failure mode.** A mismatch is not a boot error on either side: both start, and the verifier answers every token the provider signs with `401` `invalid_token`. Only a string that is not of the reading a side names refuses boot, on that side.
+**Failure mode.** A mismatch is not a boot error on either side: both start, and the verifier answers `401` `invalid_token` to every token the provider signs. Boot is refused only where a side cannot take its own string: one not of the reading it names, one neither hex nor base64 on a provider with no encoding named, or one under that side's key size.
 
 ## Executable rows
 
@@ -100,7 +100,7 @@ Several rows are pinned by tests in this repo — read them before weakening a r
 - `client_id`, not `azp`: `tests/token-flow/index.test.js` and `tests/token-flow/injection.test.js`.
 - `sub` travels intact: `tests/abac/index.test.js` (provider `sub` → `/verify` `subject`).
 - `amr` / `acr` / `auth_time`: `tests/token-flow/authentication-claims.test.js`. After a password login, the access token from `authorization_code` and from the `session` grant carries `amr` `["pwd"]`, never an empty one, and the login's `auth_time` in whole seconds, not after `iat` (strictly before it here, since the suite waits a second after the login). `acr` is the first of `acr_values` that the table knows and the login meets, in the request's order, not the table's (the `acr.values` entries in `tests/provider/local.conf`), and is absent when none is asked and on the `session` grant. A refresh carries the original `amr`, `auth_time` and `acr`.
-- The HS256 shared secret: `tests/abac/hs256-pair.test.js`, against the HS256 provider and the two HS256 verifiers in `tests/docker-compose.yml` (`provider-hs256`, `policy-verifier-hs256` and `policy-verifier-hs256-unpaired`). The provider names `hex` (`tests/provider/hs256.conf`). The verifier that names `hex` too allows a token the provider minted. The one left at its default refuses that token with `401`, and allows the same claims signed with the text's own bytes, so the encoding is all the two disagree on.
+- The HS256 shared secret: `tests/abac/hs256-pair.test.js`, against the HS256 provider and the two HS256 verifiers in `tests/docker-compose.yml` (`provider-hs256`, `policy-verifier-hs256` and `policy-verifier-hs256-unpaired`). The provider names `hex` (`tests/provider/hs256.conf`). The verifier that names `hex` too allows a token the provider minted. The one left at its default refuses that token with `401`, and allows the same claims signed with the text's own bytes, so the encoding is all the two disagree on. The rig does not tell the provider's named `hex` from its unset reading, which reads this value as hex too; the provider's own tests pin the named reading.
 
 Pinned outside this repo: the delegation range grammar and containment vectors, by auth.policy-verifier's `packages/builtins/src/__tests__/delegation/range.test.mts`. There is no E2E pin here until the provider writes `authorization_details`.
 

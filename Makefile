@@ -66,10 +66,10 @@ test-e2e: build
 	docker compose -f tests/docker-compose.yml down -v
 
 # Container logs for a failed run. A target rather than a bare `docker compose
-# logs` because compose interpolates OAUTH_JWT_* into the provider service and
-# refuses to start without them; only this Makefile exports the values, so a
-# workflow step that calls compose directly prints the interpolation error
-# instead of the logs it was asked for.
+# logs` because compose interpolates the variables exported above
+# (OAUTH_JWT_* and HS256_ISSUER) and refuses to start without them; only this
+# Makefile exports the values, so a workflow step that calls compose directly
+# prints the interpolation error instead of the logs it was asked for.
 .PHONY: logs
 logs:
 	docker compose -f tests/docker-compose.yml logs --no-color
