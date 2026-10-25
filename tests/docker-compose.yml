@@ -43,6 +43,11 @@ services:
       - ISSUER_URL=${OAUTH_JWT_ISSUER:?run via make test-e2e}
       - HTTP_PUBLIC_ORIGIN=${OAUTH_JWT_ISSUER:?run via make test-e2e}
       - HTTP_INSECURE_ORIGIN=true
+      # A plain-http issuer and public origin are for trying the provider on
+      # one machine: a provider whose kernel has an environment refuses them
+      # at boot unless it is development. A provider whose kernel has none
+      # reads no KERNEL_ENVIRONMENT and takes them as they are.
+      - &kernel-environment KERNEL_ENVIRONMENT=development
       # Every interface, at the port the other services reach it at
       # (http://provider:3000).
       - HTTP_HOST=0.0.0.0
@@ -363,6 +368,7 @@ services:
       - ISSUER_URL=${HS256_ISSUER:?run via make test-e2e}
       - HTTP_PUBLIC_ORIGIN=${HS256_ISSUER:?run via make test-e2e}
       - HTTP_INSECURE_ORIGIN=true
+      - *kernel-environment
       - HTTP_HOST=0.0.0.0
       - HTTP_PORT=3000
       - OAUTH_JWT_AUDIENCE=${OAUTH_JWT_AUDIENCE:?run via make test-e2e}

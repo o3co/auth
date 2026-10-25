@@ -78,9 +78,15 @@ FROM workspace AS runtime-hs256
 # token checked with a shared secret could be forged by any holder), so this
 # app composes none. The configuration is compose's environment and the local
 # layer tests/provider/hs256.conf.
+#
+# A provider that has @mod/client-credentials serves the grant from that module
+# and refuses to boot a client allowed a grant nothing composed serves, so the
+# app composes it there. A provider without the module serves the grant from
+# the token endpoint itself.
 RUN node provider/modules/scaffold/create-app/src/main.ts app \
       --workspace /home/node/provider \
-      @mod/token-endpoint
+      @mod/token-endpoint \
+      $(test -d provider/modules/oauth/client-credentials && echo @mod/client-credentials)
 
 RUN --mount=type=secret,id=npmrc,target=/home/node/.npmrc,uid=1000 \
     cd app && pnpm install
