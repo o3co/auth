@@ -104,11 +104,11 @@ describe('Internal Bearer adoption: real protected operation', () => {
 			`store:{session-store.sessions:${sid}}:v:record`,
 		], { encoding: 'utf8', timeout: 10_000 }).trim();
 		expect(deleted).toBe('1');
-		// No session to enter: the session grant answers 401, as for a signed-out
-		// browser.
+		// No session to enter: the session grant answers 400 invalid_grant, as
+		// for a signed-out browser.
 		const after = await sessionGrant(session.cookie);
-		expect(after.status).toBe(401);
-		expect(after.body.error).toBe('unauthorized');
+		expect(after.status).toBe(400);
+		expect(after.body.error).toBe('invalid_grant');
 		expect(after.body.access_token).toBeUndefined();
 	}, 15_000);
 
@@ -128,7 +128,8 @@ describe('Internal Bearer adoption: real protected operation', () => {
 		expect(checked.status).toBe(200);
 		expect(checked.body.active).toBe(false);
 		const fresh = await sessionGrant(session.cookie);
-		expect(fresh.status).toBe(401);
+		expect(fresh.status).toBe(400);
+		expect(fresh.body.error).toBe('invalid_grant');
 		expect(fresh.body.access_token).toBeUndefined();
 		// This fixture explicitly configures a five-second introspection TTL.
 		// Offline JWT verification alone does not promise immediate revocation.
