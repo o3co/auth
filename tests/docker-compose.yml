@@ -58,6 +58,8 @@ services:
       # ---- Signing -------------------------------------------------------
       # The key and its `kid` are in tests/provider/local.conf.
       - KEYS_SIGNING_ALG=ES256
+      # The provider refuses an ID token algorithm other than the key's.
+      - OIDC_ID_TOKEN_ALG=ES256
 
       # ---- Sender binding ------------------------------------------------
       # DPoP and mTLS are composed so the provider vouches for a bound token,
@@ -65,6 +67,9 @@ services:
       # the provider never issued it. Any certificate binds: the suite binds
       # none, it only presents tokens bound to one.
       - MTLS_MODE=self-signed
+      # The key the provider signs its DPoP nonces with: the default requires
+      # nonces, and refuses boot without it. A fixture, as the signing key is.
+      - DPOP_NONCE_SECRET=hyvpvDzzyj/1OKQj2FTSHD+t29LUQShc4hLdBM35doc=
 
       # ---- Deployment and state -------------------------------------------
       # One instance. Its store is Redis (the image composes the redis store
